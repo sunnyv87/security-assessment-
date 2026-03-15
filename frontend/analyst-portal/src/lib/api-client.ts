@@ -78,8 +78,33 @@ export async function fetchNotes(findingId: string): Promise<ValidationNote[]> {
   return api.get(`findings/${findingId}/notes`).json();
 }
 
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+  'application/pdf',
+  'text/plain', 'text/csv',
+  'application/json',
+  'application/xml', 'text/xml',
+]);
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10 MB
+const MAX_ATTACHMENTS = 10;
+
+function validateAttachments(files: File[]): void {
+  if (files.length > MAX_ATTACHMENTS) {
+    throw new Error(`Too many attachments: max ${MAX_ATTACHMENTS} files allowed`);
+  }
+  for (const f of files) {
+    if (!ALLOWED_ATTACHMENT_TYPES.has(f.type)) {
+      throw new Error(`Unsupported file type: ${f.type || 'unknown'} (${f.name})`);
+    }
+    if (f.size > MAX_ATTACHMENT_SIZE) {
+      throw new Error(`File too large: ${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB, max 10 MB)`);
+    }
+  }
+}
+
 export async function createNote(findingId: string, content: string, attachments?: File[]): Promise<ValidationNote> {
   if (attachments?.length) {
+    validateAttachments(attachments);
     const form = new FormData();
     form.set('content', content);
     attachments.forEach((f) => form.append('attachments', f));

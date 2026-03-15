@@ -28,7 +28,9 @@ class DataCollector:
     """Fetches data from internal microservices to build a ReportDataBundle."""
 
     def __init__(self) -> None:
-        self._http = httpx.AsyncClient(timeout=30.0)
+        # Use service mesh CA for mTLS verification on inter-service calls
+        ssl_verify = settings.service_mesh_ca_path if settings.service_mesh_ca_path else True
+        self._http = httpx.AsyncClient(timeout=30.0, verify=ssl_verify)
 
     async def close(self) -> None:
         await self._http.aclose()
