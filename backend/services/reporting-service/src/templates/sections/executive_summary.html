@@ -1,0 +1,55 @@
+<h2>1. Executive Summary</h2>
+
+<p>{{ ai_executive_summary | default(default_executive_summary) }}</p>
+
+<h3>Key Statistics</h3>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Total Findings</td><td>{{ statistics.total_findings }}</td></tr>
+    <tr>
+      <td>Critical</td>
+      <td><span class="severity severity-critical">{{ statistics.by_severity.get('critical', 0) }}</span></td>
+    </tr>
+    <tr>
+      <td>High</td>
+      <td><span class="severity severity-high">{{ statistics.by_severity.get('high', 0) }}</span></td>
+    </tr>
+    <tr>
+      <td>Medium</td>
+      <td><span class="severity severity-medium">{{ statistics.by_severity.get('medium', 0) }}</span></td>
+    </tr>
+    <tr>
+      <td>Low</td>
+      <td><span class="severity severity-low">{{ statistics.by_severity.get('low', 0) }}</span></td>
+    </tr>
+    <tr><td>Validation Coverage</td><td>{{ "%.0f" | format(statistics.validation_coverage * 100) }}%</td></tr>
+    <tr><td>False Positive Rate</td><td>{{ "%.1f" | format(statistics.false_positive_rate * 100) }}%</td></tr>
+  </tbody>
+</table>
+
+{% if severity_chart_svg %}
+<div class="chart-container">
+  <div class="chart-title">Findings by Severity</div>
+  {{ severity_chart_svg }}
+</div>
+{% endif %}
+
+{% if critical_findings %}
+<h3>Critical Findings Requiring Immediate Attention</h3>
+{% for f in critical_findings[:5] %}
+<div class="finding-card critical no-break">
+  <div class="finding-header">
+    <span class="finding-title">{{ f.title }}</span>
+    <span class="severity severity-critical">CRITICAL — CVSS {{ f.cvss_score }}</span>
+  </div>
+  <p>{{ f.description | truncate(200) }}</p>
+  <p><strong>Asset:</strong> {{ f.asset }} &mdash; <strong>CWE:</strong> {{ f.cwe_id }}</p>
+</div>
+{% endfor %}
+{% endif %}

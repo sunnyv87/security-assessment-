@@ -1,0 +1,49 @@
+<h2>3. Findings Summary</h2>
+
+<h3>3.1 Severity Distribution</h3>
+{% if severity_chart_svg %}
+<div class="chart-container">
+  {{ severity_chart_svg }}
+</div>
+{% endif %}
+
+<table class="data-table">
+  <thead>
+    <tr><th>Severity</th><th>Count</th><th>Percentage</th></tr>
+  </thead>
+  <tbody>
+    {% for sev in ['critical', 'high', 'medium', 'low', 'info'] %}
+    {% set count = statistics.by_severity.get(sev, 0) %}
+    {% set pct = (count / statistics.total_findings * 100) if statistics.total_findings > 0 else 0 %}
+    <tr>
+      <td><span class="severity severity-{{ sev }}">{{ sev | upper }}</span></td>
+      <td>{{ count }}</td>
+      <td>{{ "%.1f" | format(pct) }}%</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>3.2 Findings by Category</h3>
+<table class="data-table">
+  <thead>
+    <tr><th>Category</th><th>Count</th></tr>
+  </thead>
+  <tbody>
+    {% for cat, count in statistics.by_category | dictsort(by='value', reverse=true) %}
+    <tr><td>{{ cat }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h3>3.3 Findings by Asset</h3>
+<table class="data-table">
+  <thead>
+    <tr><th>Asset</th><th>Findings</th></tr>
+  </thead>
+  <tbody>
+    {% for asset, count in statistics.by_asset | dictsort(by='value', reverse=true) %}
+    <tr><td>{{ asset }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

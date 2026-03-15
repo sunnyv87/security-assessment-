@@ -1,0 +1,60 @@
+<h2>Remediation Roadmap</h2>
+
+<h3>Overview</h3>
+<p>
+  Total findings requiring remediation: <strong>{{ statistics.total_findings - statistics.false_positive_count }}</strong><br>
+  Estimated total effort: <strong>{{ remediation_plan.total_effort_estimate | default('To be determined') }}</strong>
+</p>
+
+<h3>Priority Matrix</h3>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Rank</th>
+      <th>Finding</th>
+      <th>Severity</th>
+      <th>Asset</th>
+      <th>Effort</th>
+      <th>Timeline</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in prioritized_findings %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ f.title }}</td>
+      <td><span class="severity severity-{{ f.severity }}">{{ f.severity | upper }}</span></td>
+      <td>{{ f.asset }}</td>
+      <td>{{ f.remediation.estimated_effort | default('TBD') }}</td>
+      <td>
+        {% if f.severity == 'critical' %}Immediate
+        {% elif f.severity == 'high' %}Week 1-2
+        {% elif f.severity == 'medium' %}Week 2-4
+        {% else %}Month 2-3{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% for phase in remediation_plan.phases %}
+<div class="roadmap-phase">
+  <div class="phase-name">{{ phase.name }}</div>
+  <div class="phase-timeline">Timeline: {{ phase.timeline }}</div>
+  <p>Effort estimate: {{ phase.effort_estimate }}</p>
+  <ul>
+    {% for fid in phase.finding_ids %}
+    {% set f = findings_by_id.get(fid) %}
+    {% if f %}
+    <li>
+      <span class="severity severity-{{ f.severity }}">{{ f.severity | upper }}</span>
+      {{ f.title }} — {{ f.asset }}
+    </li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+</div>
+{% endfor %}
+
+<h3>Verification &amp; Retest Plan</h3>
+<p>{{ remediation_plan.retest_recommendation | default('A follow-up retest is recommended 30 days after remediation of critical and high findings.') }}</p>

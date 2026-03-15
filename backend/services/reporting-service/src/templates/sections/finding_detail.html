@@ -1,0 +1,87 @@
+{# Rendered once per finding — finding variable is a single FindingData #}
+<div class="finding-card {{ finding.severity }} no-break">
+  <div class="finding-header">
+    <span class="finding-title">{{ finding.title }}</span>
+    <span class="severity severity-{{ finding.severity }}">{{ finding.severity | upper }}</span>
+  </div>
+
+  <div class="finding-meta">
+    <span>CVSS: {{ finding.cvss_score }} ({{ finding.cvss_vector }})</span>
+    <span>CWE: {{ finding.cwe_id }} — {{ finding.cwe_name }}</span>
+    <span>Asset: {{ finding.asset }}</span>
+    <span>{{ finding.http_method }} {{ finding.endpoint }}</span>
+  </div>
+
+  <h4>Description</h4>
+  <p>{{ finding.description }}</p>
+
+  <h4>Business Impact</h4>
+  <p>{{ finding.business_impact | default('Refer to CVSS score for impact assessment.') }}</p>
+
+  {% if finding.evidence.request or finding.evidence.response %}
+  <h4>Evidence</h4>
+  <div class="evidence-block">
+    {% if finding.evidence.request %}
+    <div class="label">Request</div>
+    <pre>{{ finding.evidence.request.method }} {{ finding.evidence.request.url }} HTTP/1.1
+{% for k, v in finding.evidence.request.headers.items() %}{{ k }}: {{ v }}
+{% endfor %}
+{{ finding.evidence.request.body }}</pre>
+    {% endif %}
+
+    {% if finding.evidence.response %}
+    <div class="label">Response</div>
+    <pre>HTTP/1.1 {{ finding.evidence.response.status_code }}
+{% for k, v in finding.evidence.response.headers.items() %}{{ k }}: {{ v }}
+{% endfor %}
+{{ finding.evidence.response.body | truncate(2000) }}</pre>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if finding.reproduction_steps %}
+  <h4>Reproduction Steps</h4>
+  <ol>
+    {% for step in finding.reproduction_steps %}
+    <li>{{ step }}</li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+
+  {% if finding.remediation.summary %}
+  <h4>Remediation</h4>
+  <p><strong>Summary:</strong> {{ finding.remediation.summary }}</p>
+
+  {% if finding.remediation.steps %}
+  <ol>
+    {% for step in finding.remediation.steps %}
+    <li>{{ step }}</li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+
+  {% for example in finding.remediation.code_examples %}
+  <div class="no-break">
+    <p><strong>{{ example.label }}</strong> ({{ example.language }})</p>
+    <pre class="vulnerable">// BEFORE (vulnerable)
+{{ example.before }}</pre>
+    <pre class="secure">// AFTER (secure)
+{{ example.after }}</pre>
+  </div>
+  {% endfor %}
+
+  {% if finding.remediation.references %}
+  <p><strong>References:</strong></p>
+  <ul>
+    {% for ref in finding.remediation.references %}
+    <li><a href="{{ ref.url }}">{{ ref.title }}</a> ({{ ref.source }})</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+
+  {% if finding.compliance_controls %}
+  <h4>Compliance Impact</h4>
+  <p>{{ finding.compliance_controls | join(', ') }}</p>
+  {% endif %}
+</div>

@@ -1,0 +1,33 @@
+[project]
+name = "reporting-service"
+version = "0.1.0"
+description = "VAPT report generation service — PDF, DOCX, HTML export"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.3.0",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29.0",
+    "weasyprint>=62.0",
+    "python-docx>=1.1.0",
+    "jinja2>=3.1.4",
+    "minio>=7.2.0",
+    "aiokafka>=0.10.0",
+    "httpx>=0.27.0",
+    "structlog>=24.2.0",
+    "pillow>=10.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100

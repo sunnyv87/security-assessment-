@@ -1,0 +1,84 @@
+<h2>Compliance Mapping</h2>
+
+<h3>Compliance Posture Summary</h3>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Framework</th>
+      <th>Score</th>
+      <th>Pass</th>
+      <th>Fail</th>
+      <th>N/A</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for framework in compliance.frameworks %}
+    {% set score = compliance.scores_by_framework.get(framework, 0) %}
+    {% set controls = compliance.control_mappings | selectattr('framework', 'equalto', framework) | list %}
+    {% set pass_count = controls | selectattr('status', 'equalto', 'pass') | list | length %}
+    {% set fail_count = controls | selectattr('status', 'equalto', 'fail') | list | length %}
+    {% set na_count = controls | selectattr('status', 'equalto', 'na') | list | length %}
+    <tr>
+      <td><strong>{{ framework }}</strong></td>
+      <td>{{ "%.0f" | format(score * 100) }}%</td>
+      <td>{{ pass_count }}</td>
+      <td>{{ fail_count }}</td>
+      <td>{{ na_count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% for framework in compliance.frameworks %}
+<h3>{{ framework }} — Detailed Control Mapping</h3>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Control ID</th>
+      <th>Control</th>
+      <th>Status</th>
+      <th>Related Findings</th>
+      <th>Remediation Required</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ctrl in compliance.control_mappings if ctrl.framework == framework %}
+    <tr>
+      <td>{{ ctrl.control_id }}</td>
+      <td>{{ ctrl.control_name }}</td>
+      <td>
+        <span class="compliance-{{ ctrl.status }}">{{ ctrl.status | upper }}</span>
+      </td>
+      <td>{{ ctrl.finding_ids | join(', ') if ctrl.finding_ids else '—' }}</td>
+      <td>{{ ctrl.remediation_required | default('—') }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
+
+{% if compliance.gaps %}
+<h3>Gap Analysis — Critical Compliance Gaps</h3>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Framework</th>
+      <th>Control</th>
+      <th>Gap Description</th>
+      <th>Related Findings</th>
+      <th>Remediation Required</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for gap in compliance.gaps %}
+    <tr>
+      <td>{{ gap.framework }}</td>
+      <td>{{ gap.control_id }} — {{ gap.control_name }}</td>
+      <td>{{ gap.evidence }}</td>
+      <td>{{ gap.finding_ids | join(', ') }}</td>
+      <td>{{ gap.remediation_required }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}

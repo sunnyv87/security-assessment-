@@ -1,0 +1,121 @@
+/* ── VAPT Report Stylesheet ── */
+/* CSS Paged Media for WeasyPrint PDF generation */
+
+:root {
+  --color-primary: #1e40af;
+  --color-secondary: #3b82f6;
+  --color-critical: #dc2626;
+  --color-high: #ea580c;
+  --color-medium: #ca8a04;
+  --color-low: #2563eb;
+  --color-info: #6b7280;
+  --color-pass: #16a34a;
+  --color-fail: #dc2626;
+  --font-heading: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-code: "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* ── Page Setup ── */
+@page {
+  size: A4 portrait;
+  margin: 25mm 20mm;
+  @top-right { content: "CONFIDENTIAL"; font-size: 8pt; color: #9ca3af; }
+  @bottom-center { content: counter(page) " / " counter(pages); font-size: 8pt; }
+  @bottom-right { content: string(report-title); font-size: 7pt; color: #9ca3af; }
+}
+
+@page :first { @top-right { content: none; } @bottom-center { content: none; } }
+
+/* ── Base Typography ── */
+body { font-family: var(--font-body); font-size: 10pt; line-height: 1.6; color: #111827; }
+h1 { font-family: var(--font-heading); font-size: 22pt; color: var(--color-primary); margin-top: 30pt; page-break-after: avoid; string-set: report-title content(); }
+h2 { font-family: var(--font-heading); font-size: 16pt; color: var(--color-primary); border-bottom: 2px solid var(--color-primary); padding-bottom: 4pt; margin-top: 24pt; page-break-after: avoid; }
+h3 { font-family: var(--font-heading); font-size: 13pt; color: #374151; margin-top: 18pt; page-break-after: avoid; }
+h4 { font-family: var(--font-heading); font-size: 11pt; color: #374151; margin-top: 14pt; }
+p { margin: 6pt 0; }
+code { font-family: var(--font-code); font-size: 9pt; background: #f3f4f6; padding: 1pt 4pt; border-radius: 3pt; }
+pre { font-family: var(--font-code); font-size: 8pt; background: #1f2937; color: #f9fafb; padding: 10pt; border-radius: 4pt; overflow: hidden; page-break-inside: avoid; }
+pre.vulnerable { background: #450a0a; color: #fca5a5; }
+pre.secure { background: #052e16; color: #86efac; }
+
+/* ── Cover Page ── */
+.cover-page { page-break-after: always; display: flex; flex-direction: column; justify-content: center; height: 100%; text-align: center; }
+.cover-page .logo-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 60pt; }
+.cover-page .logo-row img { max-height: 60pt; }
+.cover-page .report-title { font-size: 28pt; font-weight: 700; color: var(--color-primary); margin-bottom: 12pt; }
+.cover-page .report-type { font-size: 14pt; color: var(--color-secondary); text-transform: uppercase; letter-spacing: 2pt; }
+.cover-page .meta-table { margin-top: 40pt; text-align: left; margin-left: auto; margin-right: auto; }
+.cover-page .meta-table td { padding: 4pt 12pt; font-size: 10pt; }
+.cover-page .meta-table .label { color: #6b7280; font-weight: 600; }
+.cover-page .classification { margin-top: 40pt; padding: 8pt 20pt; border: 2pt solid var(--color-critical); color: var(--color-critical); font-weight: 700; display: inline-block; }
+
+/* ── Document Control ── */
+.doc-control { page-break-after: always; }
+.doc-control table { width: 100%; border-collapse: collapse; }
+.doc-control th, .doc-control td { border: 1px solid #d1d5db; padding: 6pt 10pt; text-align: left; font-size: 9pt; }
+.doc-control th { background: #f3f4f6; font-weight: 600; }
+
+/* ── Tables ── */
+table.data-table { width: 100%; border-collapse: collapse; margin: 12pt 0; page-break-inside: auto; }
+table.data-table th { background: var(--color-primary); color: white; padding: 8pt 10pt; text-align: left; font-size: 9pt; font-weight: 600; }
+table.data-table td { border-bottom: 1px solid #e5e7eb; padding: 6pt 10pt; font-size: 9pt; vertical-align: top; }
+table.data-table tr:nth-child(even) { background: #f9fafb; }
+table.data-table tr { page-break-inside: avoid; }
+
+/* ── Severity Badges ── */
+.severity { display: inline-block; padding: 2pt 8pt; border-radius: 3pt; font-size: 8pt; font-weight: 700; text-transform: uppercase; color: white; }
+.severity-critical { background: var(--color-critical); }
+.severity-high { background: var(--color-high); }
+.severity-medium { background: var(--color-medium); }
+.severity-low { background: var(--color-low); }
+.severity-info { background: var(--color-info); }
+
+/* ── Finding Cards ── */
+.finding-card { border: 1px solid #d1d5db; border-left: 4pt solid var(--color-primary); border-radius: 4pt; padding: 14pt; margin: 16pt 0; page-break-inside: avoid; }
+.finding-card.critical { border-left-color: var(--color-critical); }
+.finding-card.high { border-left-color: var(--color-high); }
+.finding-card.medium { border-left-color: var(--color-medium); }
+.finding-card.low { border-left-color: var(--color-low); }
+.finding-card .finding-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8pt; }
+.finding-card .finding-title { font-size: 12pt; font-weight: 600; color: #111827; }
+.finding-card .finding-meta { display: flex; gap: 12pt; font-size: 8pt; color: #6b7280; margin-bottom: 8pt; }
+
+/* ── Evidence Blocks ── */
+.evidence-block { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4pt; padding: 10pt; margin: 8pt 0; }
+.evidence-block .label { font-size: 8pt; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 4pt; }
+
+/* ── Charts ── */
+.chart-container { text-align: center; margin: 16pt 0; page-break-inside: avoid; }
+.chart-container img, .chart-container svg { max-width: 100%; }
+.chart-container .chart-title { font-size: 10pt; font-weight: 600; color: #374151; margin-bottom: 8pt; }
+
+/* ── Compliance Tables ── */
+.compliance-status { display: inline-block; padding: 2pt 6pt; border-radius: 3pt; font-size: 8pt; font-weight: 600; }
+.compliance-pass { background: #dcfce7; color: #166534; }
+.compliance-fail { background: #fee2e2; color: #991b1b; }
+.compliance-partial { background: #fef3c7; color: #92400e; }
+.compliance-na { background: #f3f4f6; color: #6b7280; }
+
+/* ── Roadmap Timeline ── */
+.roadmap-phase { border-left: 3pt solid var(--color-secondary); padding-left: 14pt; margin: 12pt 0; }
+.roadmap-phase .phase-name { font-size: 12pt; font-weight: 600; color: var(--color-primary); }
+.roadmap-phase .phase-timeline { font-size: 9pt; color: #6b7280; }
+
+/* ── Print Optimization ── */
+.page-break { page-break-before: always; }
+.no-break { page-break-inside: avoid; }
+
+/* ── Draft Watermark ── */
+.draft-watermark::before {
+  content: "DRAFT";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 100pt;
+  color: rgba(220, 38, 38, 0.08);
+  font-weight: 900;
+  z-index: -1;
+  pointer-events: none;
+}

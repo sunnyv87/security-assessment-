@@ -1,0 +1,52 @@
+<div class="doc-control page-break">
+  <h2>Document Control</h2>
+
+  <h3>Version History</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Version</th>
+        <th>Date</th>
+        <th>Author</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in version_history %}
+      <tr>
+        <td>{{ entry.version }}</td>
+        <td>{{ entry.date }}</td>
+        <td>{{ entry.author }}</td>
+        <td>{{ entry.description }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Distribution List</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Role</th>
+        <th>Organization</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for recipient in distribution_list %}
+      <tr>
+        <td>{{ recipient.name }}</td>
+        <td>{{ recipient.role }}</td>
+        <td>{{ recipient.organization }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Document Classification</h3>
+  <p>
+    This document is classified as <strong>CONFIDENTIAL</strong> and is intended
+    solely for the use of {{ engagement.customer_name }}. Unauthorized
+    distribution, copying, or disclosure is strictly prohibited.
+  </p>
+</div>

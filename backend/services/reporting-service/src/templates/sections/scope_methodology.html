@@ -1,0 +1,56 @@
+<h2>2. Scope &amp; Methodology</h2>
+
+<h3>2.1 Scope Definition</h3>
+<p>{{ engagement.scope_description }}</p>
+
+<h4>In-Scope Assets</h4>
+<table class="data-table">
+  <thead>
+    <tr><th>#</th><th>Asset</th></tr>
+  </thead>
+  <tbody>
+    {% for asset in engagement.in_scope_assets %}
+    <tr><td>{{ loop.index }}</td><td>{{ asset }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if engagement.exclusions %}
+<h4>Out of Scope</h4>
+<ul>
+  {% for excl in engagement.exclusions %}
+  <li>{{ excl }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<h3>2.2 Testing Methodology</h3>
+<p>
+  Testing was conducted in accordance with the <strong>{{ engagement.methodology }}</strong>
+  methodology. The assessment included both automated scanning and manual
+  validation by certified security analysts.
+</p>
+
+<h3>2.3 Testing Timeline</h3>
+<table class="data-table">
+  <thead>
+    <tr><th>Phase</th><th>Dates</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Start Date</td><td>{{ engagement.start_date }}</td></tr>
+    <tr><td>End Date</td><td>{{ engagement.end_date }}</td></tr>
+    <tr><td>Duration</td><td>{{ engagement.duration_days }} days</td></tr>
+  </tbody>
+</table>
+
+<h3>2.4 Tools Used</h3>
+<table class="data-table">
+  <thead>
+    <tr><th>#</th><th>Tool</th></tr>
+  </thead>
+  <tbody>
+    {% for tool in engagement.tools_used %}
+    <tr><td>{{ loop.index }}</td><td>{{ tool }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

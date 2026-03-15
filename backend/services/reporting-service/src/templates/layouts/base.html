@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ report_title }}</title>
+  <style>
+    {{ base_css }}
+    {% if branding.custom_css %}{{ branding.custom_css }}{% endif %}
+    :root {
+      --color-primary: {{ branding.primary_color }};
+      --color-secondary: {{ branding.secondary_color }};
+    }
+  </style>
+</head>
+<body class="{{ 'draft-watermark' if is_draft else '' }}">
+
+  {# ── Cover Page ── #}
+  <div class="cover-page">
+    <div class="logo-row">
+      {% if branding.logo_url %}
+        <img src="{{ branding.logo_url }}" alt="{{ branding.company_name }}">
+      {% else %}
+        <span></span>
+      {% endif %}
+      <img src="{{ mssp_logo_url }}" alt="VAPT Platform">
+    </div>
+
+    <div class="report-title">{{ report_title }}</div>
+    <div class="report-type">{{ report_type_label }}</div>
+
+    <table class="meta-table">
+      <tr><td class="label">Customer</td><td>{{ engagement.customer_name }}</td></tr>
+      <tr><td class="label">Engagement</td><td>{{ engagement.name }}</td></tr>
+      <tr><td class="label">Date</td><td>{{ generated_date }}</td></tr>
+      <tr><td class="label">Version</td><td>{{ report_version }}</td></tr>
+      <tr><td class="label">Lead Analyst</td><td>{{ engagement.lead_analyst }}</td></tr>
+    </table>
+
+    <div class="classification">CONFIDENTIAL</div>
+  </div>
+
+  {# ── Document Control ── #}
+  {% include 'partials/document_control.html' %}
+
+  {# ── Table of Contents ── #}
+  <div class="page-break"></div>
+  <h1>Table of Contents</h1>
+  <nav class="toc">
+    {% for section in sections %}
+      <div class="toc-entry" style="margin-left: {{ (section.level - 1) * 16 }}pt;">
+        <span>{{ section.number }}. {{ section.heading }}</span>
+      </div>
+    {% endfor %}
+  </nav>
+
+  {# ── Report Sections ── #}
+  {% for section in sections %}
+    <div class="page-break"></div>
+    {{ section.rendered_content }}
+  {% endfor %}
+
+  {# ── Appendices ── #}
+  {% if appendices %}
+    <div class="page-break"></div>
+    <h1>Appendices</h1>
+    {% for appendix in appendices %}
+      <h2>Appendix {{ appendix.letter }}. {{ appendix.heading }}</h2>
+      {{ appendix.rendered_content }}
+    {% endfor %}
+  {% endif %}
+
+  {# ── Disclaimer ── #}
+  <div class="page-break"></div>
+  {% include 'partials/disclaimer.html' %}
+
+</body>
+</html>
