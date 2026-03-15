@@ -165,6 +165,7 @@ class FalsePositiveResult(BaseModel):
     recommended_action: str
     manual_verification_steps: list[str]
     confidence: float = Field(ge=0.0, le=1.0)
+    requires_analyst_review: bool = False
 
 
 class RiskFactors(BaseModel):
@@ -192,6 +193,7 @@ class RiskPriorityResult(BaseModel):
     executive_risk_summary: str
     recommended_investigation_order: list[str]
     confidence: float = Field(ge=0.0, le=1.0)
+    requires_analyst_review: bool = False
 
 
 class RemediationStep(BaseModel):

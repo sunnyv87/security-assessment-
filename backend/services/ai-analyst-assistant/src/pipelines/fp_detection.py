@@ -87,7 +87,13 @@ class FPDetectionPipeline:
             cache_ttl=settings.cache_ttl_fp_detection,
         )
 
-        return FalsePositiveResult(**result), cached
+        fp_result = FalsePositiveResult(**result)
+
+        # Human review gate: flag low-confidence verdicts for analyst review
+        if fp_result.confidence < 0.80:
+            fp_result.requires_analyst_review = True
+
+        return fp_result, cached
 
     @staticmethod
     def _format_evidence(msg: object | None) -> str | None:

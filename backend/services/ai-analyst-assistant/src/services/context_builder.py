@@ -69,7 +69,37 @@ class ContextBuilder:
                 min_similarity,
                 top_k,
             )
-            return [dict(row) for row in rows]
+            results = [dict(row) for row in rows]
+
+            # RAG poisoning defense (RT-AI-02):
+            # Filter out suspiciously high-confidence FP markings
+            results = [
+                r for r in results
+                if not (
+                    r.get("ai_false_positive_prob") is not None
+                    and r["ai_false_positive_prob"] > 0.95
+                    and r.get("validation_verdict") == "false_positive"
+                )
+            ]
+
+            # If > 80% of similar findings are false_positive, flag as anomalous
+            # and don't use the historical context (possible RAG poisoning)
+            if results:
+                fp_count = sum(
+                    1 for r in results
+                    if r.get("validation_verdict") == "false_positive"
+                )
+                fp_ratio = fp_count / len(results)
+                if fp_ratio > 0.80:
+                    logger.warning(
+                        "rag_anomaly_detected",
+                        finding_id=finding.id,
+                        fp_ratio=fp_ratio,
+                        total_similar=len(results),
+                    )
+                    return []
+
+            return results
         except Exception:
             logger.warning("rag_query_failed", finding_id=finding.id)
             return []

@@ -88,4 +88,10 @@ class RiskPriorityPipeline:
             cache_ttl=settings.cache_ttl_priority,
         )
 
-        return RiskPriorityResult(**result), cached
+        rp_result = RiskPriorityResult(**result)
+
+        # Human review gate: flag low-confidence verdicts for analyst review
+        if rp_result.confidence < 0.80:
+            rp_result.requires_analyst_review = True
+
+        return rp_result, cached
