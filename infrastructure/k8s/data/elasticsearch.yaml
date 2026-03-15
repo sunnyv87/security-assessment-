@@ -1,0 +1,187 @@
+---
+# Elasticsearch 8 Cluster — ECK Operator managed
+# Requires: kubectl apply -f https://download.elastic.co/downloads/eck/2.11.0/crds.yaml
+#           kubectl apply -f https://download.elastic.co/downloads/eck/2.11.0/operator.yaml
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: vapt-elasticsearch
+  namespace: vapt-data
+  labels:
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/part-of: vapt-orchestration
+spec:
+  version: 8.12.0
+  nodeSets:
+    # Master nodes — dedicated for cluster management
+    - name: master
+      count: 3
+      config:
+        node.roles: ["master"]
+        xpack.security.enabled: true
+        xpack.security.transport.ssl.enabled: true
+        xpack.security.http.ssl.enabled: false
+      podTemplate:
+        spec:
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 2Gi
+                limits:
+                  cpu: "1"
+                  memory: 4Gi
+          tolerations:
+            - key: workload
+              operator: Equal
+              value: data
+              effect: NoSchedule
+          nodeSelector:
+            workload: data
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      elasticsearch.k8s.elastic.co/statefulset-name: vapt-elasticsearch-es-master
+                  topologyKey: topology.kubernetes.io/zone
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: gp3-encrypted
+            resources:
+              requests:
+                storage: 20Gi
+
+    # Data nodes — store indices and handle search/indexing
+    - name: data
+      count: 3
+      config:
+        node.roles: ["data", "data_content", "data_hot", "data_warm", "ingest"]
+        xpack.security.enabled: true
+        xpack.security.transport.ssl.enabled: true
+      podTemplate:
+        spec:
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  cpu: "2"
+                  memory: 8Gi
+                limits:
+                  cpu: "4"
+                  memory: 16Gi
+          tolerations:
+            - key: workload
+              operator: Equal
+              value: data
+              effect: NoSchedule
+          nodeSelector:
+            workload: data
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      elasticsearch.k8s.elastic.co/statefulset-name: vapt-elasticsearch-es-data
+                  topologyKey: topology.kubernetes.io/zone
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: gp3-encrypted
+            resources:
+              requests:
+                storage: 1000Gi
+
+    # Coordinating nodes — route queries, reduce results
+    - name: coordinating
+      count: 2
+      config:
+        node.roles: []
+        xpack.security.enabled: true
+        xpack.security.transport.ssl.enabled: true
+      podTemplate:
+        spec:
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 2Gi
+                limits:
+                  cpu: "2"
+                  memory: 4Gi
+          tolerations:
+            - key: workload
+              operator: Equal
+              value: data
+              effect: NoSchedule
+          nodeSelector:
+            workload: data
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: gp3-encrypted
+            resources:
+              requests:
+                storage: 20Gi
+
+  monitoring:
+    metrics:
+      elasticsearchRefs:
+        - name: vapt-elasticsearch
+    logs:
+      elasticsearchRefs:
+        - name: vapt-elasticsearch
+
+---
+# ILM Policy for findings indices
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-ilm-config
+  namespace: vapt-data
+data:
+  ilm-policy.json: |
+    {
+      "policy": {
+        "phases": {
+          "hot": {
+            "actions": {
+              "rollover": {
+                "max_size": "50GB",
+                "max_age": "7d"
+              },
+              "set_priority": { "priority": 100 }
+            }
+          },
+          "warm": {
+            "min_age": "30d",
+            "actions": {
+              "shrink": { "number_of_shards": 1 },
+              "forcemerge": { "max_num_segments": 1 },
+              "set_priority": { "priority": 50 }
+            }
+          },
+          "cold": {
+            "min_age": "90d",
+            "actions": {
+              "set_priority": { "priority": 0 }
+            }
+          },
+          "delete": {
+            "min_age": "365d",
+            "actions": {
+              "delete": {}
+            }
+          }
+        }
+      }
+    }

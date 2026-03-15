@@ -1,0 +1,585 @@
+---
+# ═══════════════════════════════════════════════════════════
+# TIER 1: CORE API SERVICES
+# ═══════════════════════════════════════════════════════════
+
+# ── 1. Engagement Service ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: engagement-svc
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: engagement-svc
+    app.kubernetes.io/part-of: vapt-orchestration
+    tier: core-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: engagement-svc
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: engagement-svc
+        tier: core-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: engagement-svc
+          image: vapt-registry/engagement-svc:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+            - secretRef:
+                name: engagement-svc-secrets
+          env:
+            - name: SERVICE_NAME
+              value: engagement-svc
+            - name: DB_HOST
+              value: vapt-pgbouncer-rw.vapt-data.svc.cluster.local
+            - name: DB_NAME
+              value: vapt_platform
+            - name: KAFKA_BROKERS
+              value: vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9092
+            - name: REDIS_URL
+              value: redis://redis-master.vapt-data.svc.cluster.local:6379/0
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: engagement-svc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: engagement-svc
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: engagement-svc
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http
+
+---
+# ── 2. Asset Discovery Service ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: asset-discovery-svc
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: asset-discovery-svc
+    tier: core-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: asset-discovery-svc
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: asset-discovery-svc
+        tier: core-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: asset-discovery-svc
+          image: vapt-registry/asset-discovery-svc:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: SERVICE_NAME
+              value: asset-discovery-svc
+            - name: DB_HOST
+              value: vapt-pgbouncer-rw.vapt-data.svc.cluster.local
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: asset-discovery-svc
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: asset-discovery-svc
+  ports:
+    - port: 8080
+      targetPort: http
+
+---
+# ── 3. Analyst Workflow Service ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analyst-workflow-svc
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: analyst-workflow-svc
+    tier: core-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: analyst-workflow-svc
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: analyst-workflow-svc
+        tier: core-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: analyst-workflow-svc
+          image: vapt-registry/analyst-workflow-svc:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: SERVICE_NAME
+              value: analyst-workflow-svc
+            - name: DB_HOST
+              value: vapt-pgbouncer-rw.vapt-data.svc.cluster.local
+            - name: KAFKA_BROKERS
+              value: vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9092
+            - name: REDIS_URL
+              value: redis://redis-master.vapt-data.svc.cluster.local:6379/0
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analyst-workflow-svc
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: analyst-workflow-svc
+  ports:
+    - port: 8080
+      targetPort: http
+
+---
+# ── 4. Findings Normalization Service ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: findings-normalization-svc
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: findings-normalization-svc
+    tier: core-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: findings-normalization-svc
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: findings-normalization-svc
+        tier: core-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: findings-normalization-svc
+          image: vapt-registry/findings-normalization-svc:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: SERVICE_NAME
+              value: findings-normalization-svc
+            - name: KAFKA_BROKERS
+              value: vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9092
+            - name: ELASTICSEARCH_URL
+              value: https://vapt-elasticsearch-es-http.vapt-data.svc.cluster.local:9200
+            - name: DB_HOST
+              value: vapt-pgbouncer-rw.vapt-data.svc.cluster.local
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: findings-normalization-svc
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: findings-normalization-svc
+  ports:
+    - port: 8080
+      targetPort: http
+
+---
+# ── 5. Compliance Engine Service ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compliance-engine-svc
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: compliance-engine-svc
+    tier: core-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: compliance-engine-svc
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: compliance-engine-svc
+        tier: core-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: compliance-engine-svc
+          image: vapt-registry/compliance-engine-svc:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: SERVICE_NAME
+              value: compliance-engine-svc
+            - name: DB_HOST
+              value: vapt-pgbouncer-rw.vapt-data.svc.cluster.local
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: compliance-engine-svc
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: compliance-engine-svc
+  ports:
+    - port: 8080
+      targetPort: http
+
+---
+# ── 6. Teams Bot Service ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: teams-bot-svc
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: teams-bot-svc
+    tier: core-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: teams-bot-svc
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: teams-bot-svc
+        tier: core-api
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: teams-bot-svc
+          image: vapt-registry/teams-bot-svc:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+            - secretRef:
+                name: teams-bot-secrets
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: teams-bot-svc
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: teams-bot-svc
+  ports:
+    - port: 8080
+      targetPort: http
+
+---
+# ── Shared ConfigMap ──
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-common-config
+  namespace: vapt-platform
+data:
+  LOG_FORMAT: json
+  LOG_LEVEL: info
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.vapt-monitoring.svc.cluster.local:4317
+  OTEL_SERVICE_NAME_PREFIX: vapt
+  VAULT_ADDR: https://vault.vapt-data.svc.cluster.local:8200
+  KEYCLOAK_URL: https://keycloak.vapt-security.svc.cluster.local:8443
+
+---
+# ── Service Account ──
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vapt-platform-sa
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/part-of: vapt-orchestration

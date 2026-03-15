@@ -1,0 +1,122 @@
+---
+# MinIO Distributed Mode — 4 nodes with erasure coding
+# Install: helm install minio minio/minio -n vapt-data -f minio-values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-helm-values
+  namespace: vapt-data
+  annotations:
+    helm.sh/chart: minio/minio
+data:
+  values.yaml: |
+    mode: distributed
+
+    replicas: 4
+    drivesPerNode: 2
+
+    image:
+      repository: quay.io/minio/minio
+      tag: RELEASE.2024-01-31T20-20-33Z
+
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+
+    persistence:
+      enabled: true
+      size: 1Ti
+      storageClass: gp3-encrypted
+
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: data
+        effect: NoSchedule
+
+    nodeSelector:
+      workload: data
+
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: minio
+            topologyKey: topology.kubernetes.io/zone
+
+    environment:
+      MINIO_BROWSER: "on"
+      MINIO_PROMETHEUS_AUTH_TYPE: "public"
+
+    metrics:
+      serviceMonitor:
+        enabled: true
+        namespace: vapt-monitoring
+
+    buckets:
+      - name: scan-results
+        policy: none
+        purge: false
+      - name: report-files
+        policy: none
+        purge: false
+      - name: evidence-uploads
+        policy: none
+        purge: false
+      - name: backups
+        policy: none
+        purge: false
+
+    policies:
+      - name: tenant-read-write
+        statements:
+          - resources:
+              - "arn:aws:s3:::report-files/${tenant_id}/*"
+            actions:
+              - "s3:GetObject"
+              - "s3:PutObject"
+              - "s3:DeleteObject"
+              - "s3:ListBucket"
+
+    lifecycle:
+      - name: scan-results
+        config: |
+          <LifecycleConfiguration>
+            <Rule>
+              <ID>expire-old-scans</ID>
+              <Filter><Prefix></Prefix></Filter>
+              <Status>Enabled</Status>
+              <Expiration>
+                <Days>90</Days>
+              </Expiration>
+            </Rule>
+          </LifecycleConfiguration>
+
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      runAsNonRoot: true
+
+---
+# MinIO Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: vapt-data
+  labels:
+    app.kubernetes.io/name: minio
+spec:
+  ports:
+    - port: 9000
+      name: api
+    - port: 9001
+      name: console
+  selector:
+    app: minio

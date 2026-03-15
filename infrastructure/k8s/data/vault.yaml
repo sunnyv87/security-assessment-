@@ -1,0 +1,134 @@
+---
+# HashiCorp Vault HA with Raft storage — 3 nodes
+# Install: helm install vault hashicorp/vault -n vapt-data -f vault-values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-helm-values
+  namespace: vapt-data
+  annotations:
+    helm.sh/chart: hashicorp/vault
+data:
+  values.yaml: |
+    global:
+      enabled: true
+      tlsDisable: false
+
+    server:
+      image:
+        repository: hashicorp/vault
+        tag: 1.15.4
+
+      ha:
+        enabled: true
+        replicas: 3
+        raft:
+          enabled: true
+          config: |
+            ui = true
+
+            listener "tcp" {
+              tls_disable = 0
+              address = "[::]:8200"
+              cluster_address = "[::]:8201"
+              tls_cert_file = "/vault/tls/tls.crt"
+              tls_key_file  = "/vault/tls/tls.key"
+            }
+
+            storage "raft" {
+              path = "/vault/data"
+              retry_join {
+                leader_api_addr = "https://vault-0.vault-internal.vapt-data.svc.cluster.local:8200"
+              }
+              retry_join {
+                leader_api_addr = "https://vault-1.vault-internal.vapt-data.svc.cluster.local:8200"
+              }
+              retry_join {
+                leader_api_addr = "https://vault-2.vault-internal.vapt-data.svc.cluster.local:8200"
+              }
+            }
+
+            seal "awskms" {
+              region     = "us-east-1"
+              kms_key_id = "REPLACE_WITH_KMS_KEY_ID"
+            }
+
+            telemetry {
+              prometheus_retention_time = "30s"
+              disable_hostname = true
+            }
+
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+
+      dataStorage:
+        enabled: true
+        size: 50Gi
+        storageClass: gp3-encrypted
+
+      auditStorage:
+        enabled: true
+        size: 50Gi
+        storageClass: gp3-encrypted
+
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: data
+          effect: NoSchedule
+
+      nodeSelector:
+        workload: data
+
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vault
+              topologyKey: topology.kubernetes.io/zone
+
+    ui:
+      enabled: true
+
+    injector:
+      enabled: true
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 250m
+          memory: 256Mi
+
+---
+# Vault ServiceMonitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vault-metrics
+  namespace: vapt-monitoring
+  labels:
+    app.kubernetes.io/name: vault
+spec:
+  namespaceSelector:
+    matchNames:
+      - vapt-data
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+  endpoints:
+    - port: http
+      path: /v1/sys/metrics
+      params:
+        format: ["prometheus"]
+      interval: 30s
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true

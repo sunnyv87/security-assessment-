@@ -1,0 +1,60 @@
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vapt-platform-quota
+  namespace: vapt-platform
+spec:
+  hard:
+    requests.cpu: "60"
+    requests.memory: 120Gi
+    limits.cpu: "120"
+    limits.memory: 240Gi
+    pods: "200"
+    services: "30"
+    persistentvolumeclaims: "10"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vapt-data-quota
+  namespace: vapt-data
+spec:
+  hard:
+    requests.cpu: "40"
+    requests.memory: 256Gi
+    limits.cpu: "80"
+    limits.memory: 512Gi
+    pods: "100"
+    persistentvolumeclaims: "50"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vapt-monitoring-quota
+  namespace: vapt-monitoring
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 32Gi
+    limits.cpu: "16"
+    limits.memory: 64Gi
+    pods: "50"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: vapt-platform
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "4"
+        memory: 8Gi

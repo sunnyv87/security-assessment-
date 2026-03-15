@@ -1,0 +1,620 @@
+---
+# ═══════════════════════════════════════════════════════════
+# TIER 3: SCAN EXECUTION LAYER
+# ═══════════════════════════════════════════════════════════
+
+# ── Scan Orchestrator (Temporal Worker) ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scan-orchestrator
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: scan-orchestrator
+    app.kubernetes.io/part-of: vapt-orchestration
+    tier: scan-execution
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scan-orchestrator
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scan-orchestrator
+        tier: scan-execution
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: scan-orchestrator-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: scan-orchestrator
+          image: vapt-registry/scan-orchestrator:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: SERVICE_NAME
+              value: scan-orchestrator
+            - name: TEMPORAL_HOST
+              value: temporal-frontend.vapt-data.svc.cluster.local:7233
+            - name: TEMPORAL_NAMESPACE
+              value: vapt-scans
+            - name: DB_HOST
+              value: vapt-pgbouncer-rw.vapt-data.svc.cluster.local
+            - name: KAFKA_BROKERS
+              value: vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9092
+            - name: REDIS_URL
+              value: redis://redis-master.vapt-data.svc.cluster.local:6379/1
+            - name: VAULT_ADDR
+              value: https://vault.vapt-data.svc.cluster.local:8200
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: scan
+          effect: NoSchedule
+      nodeSelector:
+        workload: scan
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scan-orchestrator
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: scan-orchestrator
+  ports:
+    - port: 8080
+      targetPort: http
+
+---
+# Service account with RBAC to create K8s Jobs for scan workers
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scan-orchestrator-sa
+  namespace: vapt-platform
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scan-job-manager
+  namespace: vapt-platform
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scan-orchestrator-job-manager
+  namespace: vapt-platform
+subjects:
+  - kind: ServiceAccount
+    name: scan-orchestrator-sa
+    namespace: vapt-platform
+roleRef:
+  kind: Role
+  name: scan-job-manager
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ── Burp Suite Connector ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: burp-connector
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: burp-connector
+    tier: scan-execution
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: burp-connector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: burp-connector
+        tier: scan-execution
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: burp-connector
+          image: vapt-registry/burp-connector:latest
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 50051
+              name: grpc
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: SERVICE_NAME
+              value: burp-connector
+            - name: KAFKA_BROKERS
+              value: vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9092
+            - name: VAULT_ADDR
+              value: https://vault.vapt-data.svc.cluster.local:8200
+            - name: MINIO_ENDPOINT
+              value: minio.vapt-data.svc.cluster.local:9000
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: scan
+          effect: NoSchedule
+      nodeSelector:
+        workload: scan
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: burp-connector
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: burp-connector
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http
+    - port: 50051
+      targetPort: grpc
+      name: grpc
+
+---
+# ── Tenable Connector ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenable-connector
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: tenable-connector
+    tier: scan-execution
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tenable-connector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tenable-connector
+        tier: scan-execution
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tenable-connector
+          image: vapt-registry/tenable-connector:latest
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 50051
+              name: grpc
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: SERVICE_NAME
+              value: tenable-connector
+            - name: KAFKA_BROKERS
+              value: vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9092
+            - name: VAULT_ADDR
+              value: https://vault.vapt-data.svc.cluster.local:8200
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 1500m
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: scan
+          effect: NoSchedule
+      nodeSelector:
+        workload: scan
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenable-connector
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: tenable-connector
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http
+    - port: 50051
+      targetPort: grpc
+      name: grpc
+
+---
+# ── Fortify Connector ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fortify-connector
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: fortify-connector
+    tier: scan-execution
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fortify-connector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fortify-connector
+        tier: scan-execution
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: fortify-connector
+          image: vapt-registry/fortify-connector:latest
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 50051
+              name: grpc
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: SERVICE_NAME
+              value: fortify-connector
+            - name: KAFKA_BROKERS
+              value: vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9092
+            - name: VAULT_ADDR
+              value: https://vault.vapt-data.svc.cluster.local:8200
+            - name: MINIO_ENDPOINT
+              value: minio.vapt-data.svc.cluster.local:9000
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: scan
+          effect: NoSchedule
+      nodeSelector:
+        workload: scan
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fortify-connector
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: fortify-connector
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http
+    - port: 50051
+      targetPort: grpc
+      name: grpc
+
+---
+# ── Mobile Security Connector ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mobile-connector
+  namespace: vapt-platform
+  labels:
+    app.kubernetes.io/name: mobile-connector
+    tier: scan-execution
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mobile-connector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mobile-connector
+        tier: scan-execution
+    spec:
+      serviceAccountName: vapt-platform-sa
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mobile-connector
+          image: vapt-registry/mobile-connector:latest
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 50051
+              name: grpc
+          envFrom:
+            - configMapRef:
+                name: platform-common-config
+          env:
+            - name: SERVICE_NAME
+              value: mobile-connector
+            - name: KAFKA_BROKERS
+              value: vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9092
+            - name: VAULT_ADDR
+              value: https://vault.vapt-data.svc.cluster.local:8200
+            - name: MINIO_ENDPOINT
+              value: minio.vapt-data.svc.cluster.local:9000
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: scan
+          effect: NoSchedule
+      nodeSelector:
+        workload: scan
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mobile-connector
+  namespace: vapt-platform
+spec:
+  selector:
+    app.kubernetes.io/name: mobile-connector
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http
+    - port: 50051
+      targetPort: grpc
+      name: grpc
+
+---
+# ── Scan Worker Job Template (created dynamically by scan-orchestrator) ──
+# This is a reference template; actual jobs are created programmatically
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scan-job-template
+  namespace: vapt-platform
+data:
+  job-template.yaml: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: scan-${SCAN_ID}
+      namespace: vapt-platform
+      labels:
+        app.kubernetes.io/name: scan-worker
+        scan-id: ${SCAN_ID}
+        tenant-id: ${TENANT_ID}
+        scanner-type: ${SCANNER_TYPE}
+    spec:
+      ttlSecondsAfterFinished: 3600
+      activeDeadlineSeconds: 14400
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: scan-worker
+            scan-id: ${SCAN_ID}
+        spec:
+          runtimeClassName: gvisor
+          serviceAccountName: vapt-platform-sa
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: scanner
+              image: vapt-registry/${SCANNER_IMAGE}:${SCANNER_VERSION}
+              env:
+                - name: SCAN_ID
+                  value: ${SCAN_ID}
+                - name: TENANT_ID
+                  value: ${TENANT_ID}
+                - name: TARGET_CONFIG
+                  value: ${TARGET_CONFIG_JSON}
+              resources:
+                requests:
+                  cpu: "1"
+                  memory: 2Gi
+                limits:
+                  cpu: "4"
+                  memory: 8Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: scan-workspace
+                  mountPath: /workspace
+          volumes:
+            - name: scan-workspace
+              emptyDir:
+                sizeLimit: 10Gi
+          tolerations:
+            - key: workload
+              operator: Equal
+              value: scan
+              effect: NoSchedule
+          nodeSelector:
+            workload: scan
+
+---
+# RuntimeClass for gVisor sandboxed scan execution
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+scheduling:
+  nodeSelector:
+    workload: scan
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: scan
+      effect: NoSchedule

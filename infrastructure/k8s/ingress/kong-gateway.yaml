@@ -1,0 +1,137 @@
+---
+# Kong Ingress Controller deployment via Helm values
+# Install: helm install kong kong/ingress -n ingress-system -f kong-gateway.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-helm-values
+  namespace: ingress-system
+  annotations:
+    helm.sh/chart: kong/ingress
+data:
+  values.yaml: |
+    gateway:
+      replicaCount: 3
+      resources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          cpu: 2000m
+          memory: 2Gi
+      env:
+        nginx_http_lua_shared_dict: "rate_limiting 32m"
+        plugins: "bundled,oidc"
+      proxy:
+        type: LoadBalancer
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-type: nlb
+          service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+          service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+      admin:
+        enabled: false
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kong
+              topologyKey: topology.kubernetes.io/zone
+    controller:
+      replicaCount: 2
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: 1000m
+          memory: 1Gi
+---
+# Global rate limiting plugin
+apiVersion: configuration.konghq.com/v1
+kind: KongClusterPlugin
+metadata:
+  name: global-rate-limit
+  annotations:
+    kubernetes.io/ingress.class: kong
+  labels:
+    global: "true"
+config:
+  minute: 600
+  policy: redis
+  redis_host: redis-master.vapt-data.svc.cluster.local
+  redis_port: 6379
+  redis_database: 1
+  limit_by: consumer
+  fault_tolerant: true
+plugin: rate-limiting
+---
+# JWT validation plugin
+apiVersion: configuration.konghq.com/v1
+kind: KongClusterPlugin
+metadata:
+  name: jwt-auth
+  annotations:
+    kubernetes.io/ingress.class: kong
+config:
+  key_claim_name: kid
+  claims_to_verify:
+    - exp
+  header_names:
+    - Authorization
+  uri_param_names: []
+plugin: jwt
+---
+# IP restriction for admin endpoints
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: admin-ip-restriction
+  namespace: vapt-platform
+config:
+  allow:
+    - 10.0.0.0/8
+  status: 403
+  message: "Access denied"
+plugin: ip-restriction
+---
+# Request size limiting
+apiVersion: configuration.konghq.com/v1
+kind: KongClusterPlugin
+metadata:
+  name: request-size-limit
+  annotations:
+    kubernetes.io/ingress.class: kong
+  labels:
+    global: "true"
+config:
+  allowed_payload_size: 50
+  size_unit: megabytes
+plugin: request-size-limiting
+---
+# CORS plugin for frontend origins
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: cors-policy
+  namespace: vapt-platform
+config:
+  origins:
+    - "https://analyst.vapt-platform.com"
+    - "https://portal.vapt-platform.com"
+  methods:
+    - GET
+    - POST
+    - PUT
+    - PATCH
+    - DELETE
+    - OPTIONS
+  headers:
+    - Authorization
+    - Content-Type
+    - X-Tenant-ID
+    - X-Request-ID
+  max_age: 3600
+  credentials: true
+plugin: cors

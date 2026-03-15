@@ -1,0 +1,333 @@
+---
+# kube-prometheus-stack Helm values
+# Install: helm install monitoring prometheus-community/kube-prometheus-stack -n vapt-monitoring -f prometheus-stack.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-stack-values
+  namespace: vapt-monitoring
+  annotations:
+    helm.sh/chart: prometheus-community/kube-prometheus-stack
+data:
+  values.yaml: |
+    # ── Prometheus ──
+    prometheus:
+      prometheusSpec:
+        replicas: 2
+        retention: 30d
+        retentionSize: 80GB
+        resources:
+          requests:
+            cpu: "1"
+            memory: 4Gi
+          limits:
+            cpu: "2"
+            memory: 8Gi
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: gp3-encrypted
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 100Gi
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+        # Scrape all namespaces
+        serviceMonitorNamespaceSelector: {}
+        podMonitorNamespaceSelector: {}
+        ruleNamespaceSelector: {}
+        # Thanos sidecar for long-term storage
+        thanos:
+          objectStorageConfig:
+            existingSecret:
+              name: thanos-s3-config
+              key: objstore.yml
+        additionalScrapeConfigs:
+          - job_name: "vapt-platform-services"
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names: ["vapt-platform"]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                action: keep
+                regex: "true"
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                action: replace
+                target_label: __address__
+                regex: (.+)
+                replacement: ${1}:$1
+              - source_labels: [__meta_kubernetes_namespace]
+                target_label: namespace
+              - source_labels: [__meta_kubernetes_pod_name]
+                target_label: pod
+      tolerations:
+        - key: node-role
+          operator: Equal
+          value: system
+          effect: NoSchedule
+
+    # ── Alertmanager ──
+    alertmanager:
+      alertmanagerSpec:
+        replicas: 2
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: gp3-encrypted
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 10Gi
+      config:
+        global:
+          resolve_timeout: 5m
+          slack_api_url_file: /etc/alertmanager/secrets/slack-webhook-url
+
+        route:
+          receiver: "slack-warnings"
+          group_by: ["alertname", "namespace", "service"]
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 4h
+          routes:
+            - receiver: "pagerduty-critical"
+              match:
+                severity: critical
+              repeat_interval: 15m
+            - receiver: "slack-warnings"
+              match:
+                severity: warning
+              repeat_interval: 1h
+            - receiver: "slack-info"
+              match:
+                severity: info
+              repeat_interval: 12h
+
+        receivers:
+          - name: "pagerduty-critical"
+            pagerduty_configs:
+              - service_key_file: /etc/alertmanager/secrets/pagerduty-key
+                severity: critical
+          - name: "slack-warnings"
+            slack_configs:
+              - channel: "#vapt-alerts"
+                title: '{{ .GroupLabels.alertname }}'
+                text: '{{ range .Alerts }}*{{ .Labels.severity | toUpper }}*: {{ .Annotations.summary }}{{ end }}'
+                send_resolved: true
+          - name: "slack-info"
+            slack_configs:
+              - channel: "#vapt-info"
+                send_resolved: true
+
+    # ── Grafana ──
+    grafana:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      persistence:
+        enabled: true
+        size: 20Gi
+        storageClassName: gp3-encrypted
+      adminPassword: ""  # Set via secret
+      envFromSecret: grafana-admin-secret
+      grafana.ini:
+        server:
+          root_url: https://grafana.vapt-platform.com
+        auth:
+          disable_login_form: false
+        auth.generic_oauth:
+          enabled: true
+          name: Keycloak
+          allow_sign_up: true
+          client_id: grafana
+          scopes: openid profile email
+          auth_url: https://keycloak.vapt-platform.com/realms/vapt/protocol/openid-connect/auth
+          token_url: https://keycloak.vapt-platform.com/realms/vapt/protocol/openid-connect/token
+          api_url: https://keycloak.vapt-platform.com/realms/vapt/protocol/openid-connect/userinfo
+          role_attribute_path: contains(groups[*], 'admin') && 'Admin' || 'Viewer'
+      dashboardProviders:
+        dashboardproviders.yaml:
+          apiVersion: 1
+          providers:
+            - name: "default"
+              orgId: 1
+              folder: "VAPT Platform"
+              type: file
+              disableDeletion: false
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/default
+      additionalDataSources:
+        - name: Loki
+          type: loki
+          url: http://loki.vapt-monitoring.svc.cluster.local:3100
+          access: proxy
+        - name: Tempo
+          type: tempo
+          url: http://tempo.vapt-monitoring.svc.cluster.local:3200
+          access: proxy
+          jsonData:
+            tracesToLogsV2:
+              datasourceUid: loki
+              filterByTraceID: true
+            nodeGraph:
+              enabled: true
+            serviceMap:
+              datasourceUid: prometheus
+
+    # ── Node Exporter ──
+    nodeExporter:
+      enabled: true
+
+    # ── kube-state-metrics ──
+    kubeStateMetrics:
+      enabled: true
+
+---
+# ── Custom PrometheusRule for VAPT Platform Alerts ──
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vapt-platform-alerts
+  namespace: vapt-monitoring
+  labels:
+    release: monitoring
+spec:
+  groups:
+    # ── Critical Alerts ──
+    - name: vapt-critical
+      rules:
+        - alert: PostgreSQLDown
+          expr: pg_up == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PostgreSQL instance is down"
+            description: "PostgreSQL instance {{ $labels.instance }} has been down for more than 1 minute."
+
+        - alert: PostgreSQLReplicationLag
+          expr: pg_replication_lag > 30
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "PostgreSQL replication lag exceeds 30s"
+
+        - alert: KafkaBrokerOffline
+          expr: kafka_server_replicamanager_underreplicatedpartitions > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kafka has under-replicated partitions"
+
+        - alert: VaultSealed
+          expr: vault_core_unsealed == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Vault is sealed"
+
+        - alert: HighAPIErrorRate
+          expr: |
+            sum(rate(http_requests_total{status=~"5..", namespace="vapt-platform"}[5m]))
+            / sum(rate(http_requests_total{namespace="vapt-platform"}[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "API error rate exceeds 5%"
+
+        - alert: NodePoolCapacityLow
+          expr: |
+            sum(kube_node_status_allocatable{resource="cpu"}) - sum(kube_pod_container_resource_requests{resource="cpu"})
+            < sum(kube_node_status_allocatable{resource="cpu"}) * 0.2
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Cluster CPU capacity below 20%"
+
+        - alert: CertificateExpiringSoon
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 604800
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: "TLS certificate expires within 7 days"
+
+    # ── Warning Alerts ──
+    - name: vapt-warnings
+      rules:
+        - alert: ServiceRestartLoop
+          expr: increase(kube_pod_container_status_restarts_total{namespace="vapt-platform"}[15m]) > 3
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.pod }} restarting frequently"
+
+        - alert: AIAnalystHighLatency
+          expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service="ai-analyst-assistant"}[5m])) > 30
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "AI analyst p99 latency exceeds 30 seconds"
+
+        - alert: ReportQueueBacklog
+          expr: vapt_report_queue_depth > 20
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Report generation queue depth exceeds 20"
+
+        - alert: KafkaConsumerLag
+          expr: kafka_consumergroup_lag_sum > 5000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kafka consumer lag exceeds 5000 for group {{ $labels.consumergroup }}"
+
+        - alert: RedisHighMemory
+          expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Redis memory usage above 80%"
+
+        - alert: ElasticsearchYellow
+          expr: elasticsearch_cluster_health_status{color="yellow"} == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Elasticsearch cluster health is yellow"
+
+        - alert: PodPendingTooLong
+          expr: kube_pod_status_phase{phase="Pending", namespace=~"vapt-.*"} == 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.pod }} pending for more than 5 minutes"

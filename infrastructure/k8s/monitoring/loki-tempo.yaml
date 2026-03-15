@@ -1,0 +1,265 @@
+---
+# Loki — Log aggregation
+# Install: helm install loki grafana/loki -n vapt-monitoring -f loki-values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-helm-values
+  namespace: vapt-monitoring
+  annotations:
+    helm.sh/chart: grafana/loki
+data:
+  values.yaml: |
+    loki:
+      auth_enabled: false
+      commonConfig:
+        replication_factor: 1
+      storage:
+        type: s3
+        s3:
+          endpoint: minio.vapt-data.svc.cluster.local:9000
+          bucketnames: loki-logs
+          access_key_id: ${MINIO_ACCESS_KEY}
+          secret_access_key: ${MINIO_SECRET_KEY}
+          insecure: true
+          s3ForcePathStyle: true
+      limits_config:
+        retention_period: 720h
+        max_query_length: 721h
+        max_query_parallelism: 32
+      schema_config:
+        configs:
+          - from: "2024-01-01"
+            store: tsdb
+            object_store: s3
+            schema: v13
+            index:
+              prefix: loki_index_
+              period: 24h
+
+    singleBinary:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      persistence:
+        size: 50Gi
+        storageClass: gp3-encrypted
+
+---
+# Promtail — Log collection DaemonSet
+# Install: helm install promtail grafana/promtail -n vapt-monitoring -f promtail-values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-helm-values
+  namespace: vapt-monitoring
+  annotations:
+    helm.sh/chart: grafana/promtail
+data:
+  values.yaml: |
+    config:
+      clients:
+        - url: http://loki.vapt-monitoring.svc.cluster.local:3100/loki/api/v1/push
+          tenant_id: vapt
+      snippets:
+        pipelineStages:
+          - cri: {}
+          - json:
+              expressions:
+                level: level
+                service: service
+                tenant_id: tenant_id
+                trace_id: trace_id
+          - labels:
+              level:
+              service:
+              tenant_id:
+          - timestamp:
+              source: timestamp
+              format: RFC3339
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    tolerations:
+      - operator: Exists
+
+---
+# Tempo — Distributed tracing
+# Install: helm install tempo grafana/tempo -n vapt-monitoring -f tempo-values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-helm-values
+  namespace: vapt-monitoring
+  annotations:
+    helm.sh/chart: grafana/tempo
+data:
+  values.yaml: |
+    tempo:
+      storage:
+        trace:
+          backend: s3
+          s3:
+            bucket: tempo-traces
+            endpoint: minio.vapt-data.svc.cluster.local:9000
+            insecure: true
+            forcepathstyle: true
+          wal:
+            path: /var/tempo/wal
+          local:
+            path: /var/tempo/blocks
+      retention: 168h
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+      metrics_generator:
+        storage:
+          path: /var/tempo/generator/wal
+          remote_write:
+            - url: http://monitoring-prometheus.vapt-monitoring.svc.cluster.local:9090/api/v1/write
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: gp3-encrypted
+
+---
+# OpenTelemetry Collector — trace/metric collection
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: vapt-monitoring
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        send_batch_size: 1000
+        timeout: 10s
+      memory_limiter:
+        check_interval: 5s
+        limit_mib: 1500
+        spike_limit_mib: 512
+      tail_sampling:
+        decision_wait: 10s
+        policies:
+          - name: errors
+            type: status_code
+            status_code:
+              status_codes: [ERROR]
+          - name: slow-requests
+            type: latency
+            latency:
+              threshold_ms: 5000
+          - name: probabilistic
+            type: probabilistic
+            probabilistic:
+              sampling_percentage: 10
+
+    exporters:
+      otlp/tempo:
+        endpoint: tempo.vapt-monitoring.svc.cluster.local:4317
+        tls:
+          insecure: true
+      prometheus:
+        endpoint: 0.0.0.0:8889
+        namespace: otel
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, tail_sampling, batch]
+          exporters: [otlp/tempo]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheus]
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-collector
+  namespace: vapt-monitoring
+  labels:
+    app.kubernetes.io/name: otel-collector
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.93.0
+          args: ["--config=/etc/otel/config.yaml"]
+          ports:
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
+            - containerPort: 8889
+              name: prometheus
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+      tolerations:
+        - operator: Exists
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: vapt-monitoring
+spec:
+  selector:
+    app.kubernetes.io/name: otel-collector
+  ports:
+    - port: 4317
+      targetPort: otlp-grpc
+      name: otlp-grpc
+    - port: 4318
+      targetPort: otlp-http
+      name: otlp-http

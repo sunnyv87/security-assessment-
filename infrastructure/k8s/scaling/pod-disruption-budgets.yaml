@@ -1,0 +1,114 @@
+---
+# ═══════════════════════════════════════════════════════════
+# POD DISRUPTION BUDGETS
+# Ensure minimum availability during voluntary disruptions
+# (node drains, cluster upgrades, rolling updates)
+# ═══════════════════════════════════════════════════════════
+
+# ── Core API Services — at least 2 pods always available ──
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: engagement-svc-pdb
+  namespace: vapt-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: engagement-svc
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analyst-workflow-svc-pdb
+  namespace: vapt-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: analyst-workflow-svc
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: findings-normalization-svc-pdb
+  namespace: vapt-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: findings-normalization-svc
+
+---
+# ── AI & Reporting — at least 2 pods always available ──
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-analyst-assistant-pdb
+  namespace: vapt-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-analyst-assistant
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: reporting-service-pdb
+  namespace: vapt-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: reporting-service
+
+---
+# ── Scan Execution — allow max 1 disruption ──
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: scan-orchestrator-pdb
+  namespace: vapt-platform
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scan-orchestrator
+
+---
+# ── Frontends — at least 2 pods always available ──
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analyst-portal-pdb
+  namespace: vapt-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: analyst-portal
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: customer-portal-pdb
+  namespace: vapt-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: customer-portal
+
+---
+# ── Data Layer — strict availability guarantees ──
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-pdb
+  namespace: vapt-data
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
