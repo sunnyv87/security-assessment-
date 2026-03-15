@@ -331,3 +331,86 @@ spec:
             severity: warning
           annotations:
             summary: "Pod {{ $labels.pod }} pending for more than 5 minutes"
+
+    # ── Security Event Alerts ──
+    - name: vapt-security-events
+      rules:
+        - alert: HighAuthenticationFailureRate
+          expr: |
+            sum(rate(http_requests_total{status="401", namespace="vapt-platform"}[5m])) > 0.5
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High authentication failure rate detected (>30 failures/min)"
+            description: "Possible brute-force or credential stuffing attack. Investigate source IPs and user agents."
+
+        - alert: CrossTenantAccessAttempt
+          expr: |
+            sum(rate(vapt_cross_tenant_access_denied_total[5m])) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Cross-tenant access attempt detected"
+            description: "A user attempted to access resources belonging to a different tenant. This is a potential data isolation breach attempt."
+
+        - alert: PrivilegeEscalationAttempt
+          expr: |
+            sum(rate(http_requests_total{status="403", namespace="vapt-platform"}[5m])) > 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High rate of authorization failures (possible privilege escalation)"
+            description: "Multiple 403 responses indicate a user or service is attempting unauthorized operations."
+
+        - alert: AbnormalCredentialCheckout
+          expr: |
+            sum(rate(vapt_credential_checkout_total[1h])) by (tenant_id) > 20
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Abnormal credential checkout volume for tenant {{ $labels.tenant_id }}"
+            description: "More than 20 credential checkouts in 1 hour. Verify this is expected scanner activity."
+
+        - alert: AIAnalysisConsistentFailures
+          expr: |
+            sum(rate(vapt_ai_analysis_errors_total[10m])) / sum(rate(vapt_ai_analysis_requests_total[10m])) > 0.5
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "AI analysis failure rate exceeds 50%"
+            description: "The Claude API may be experiencing issues. AI enrichment pipeline is degraded."
+
+        - alert: SuspiciousAPIAccessPattern
+          expr: |
+            sum(rate(http_requests_total{namespace="vapt-platform"}[1m])) by (pod) > 100
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Unusually high request rate from pod {{ $labels.pod }}"
+            description: "A single pod is generating >100 requests/minute. May indicate compromised service or misconfiguration."
+
+        - alert: FalcoSecurityAlert
+          expr: |
+            sum(rate(falco_events{priority=~"Critical|Emergency"}[5m])) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Falco detected critical runtime security event"
+            description: "Container runtime security violation detected. Investigate immediately."
+
+        - alert: RateLimitExceeded
+          expr: |
+            sum(rate(vapt_rate_limit_exceeded_total[5m])) by (tenant_id) > 5
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Rate limit repeatedly exceeded by tenant {{ $labels.tenant_id }}"
+            description: "A tenant is consistently hitting rate limits. May indicate abuse or misconfigured automation."

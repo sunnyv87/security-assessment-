@@ -131,7 +131,7 @@ metadata:
     policies.kyverno.io/title: Require Read-Only Root Filesystem
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: readonly-rootfs
@@ -158,9 +158,9 @@ metadata:
   name: disallow-latest-tag
   annotations:
     policies.kyverno.io/title: Disallow Latest Tag
-    policies.kyverno.io/severity: medium
+    policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: no-latest

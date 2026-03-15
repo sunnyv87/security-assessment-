@@ -44,6 +44,18 @@ class TenantIsolationMiddleware(BaseHTTPMiddleware):
         header_tenant = request.headers.get("X-Tenant-ID")
         jwt_tenant = getattr(request.state, "jwt_tenant_id", None)
 
+        # If header is provided, JWT claim MUST also be present and match
+        if header_tenant and not jwt_tenant:
+            logger.error(
+                "tenant_id_header_without_jwt_claim",
+                header_tenant=header_tenant,
+                path=request.url.path,
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="Tenant ID header provided but JWT claim missing",
+            )
+
         if header_tenant and jwt_tenant and header_tenant != jwt_tenant:
             logger.error(
                 "tenant_id_mismatch",

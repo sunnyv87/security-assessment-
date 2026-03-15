@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     claude_max_retries: int = 3
 
     # ── Database ──
-    database_url: str = "postgresql+asyncpg://vapt:vapt@localhost:5432/vapt_platform"
+    database_url: str = "postgresql+asyncpg://vapt@localhost:5432/vapt_platform"
 
     # ── Redis ──
     redis_url: str = "redis://localhost:6379/0"
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     cache_ttl_priority: int = 7200       # 2 hours
 
     # ── Kafka ──
-    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_bootstrap_servers: str = "vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9093"
     kafka_consumer_group: str = "ai-analyst-assistant"
     kafka_topic_findings_normalized: str = "finding.normalized"
     kafka_topic_findings_enriched: str = "finding.ai_enriched"
@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     rag_similarity_top_k: int = 10
     rag_similarity_threshold: float = 0.75
+
+    # ── Keycloak OIDC ──
+    keycloak_url: str = "https://keycloak.vapt-security.svc.cluster.local:8443"
+    keycloak_realm: str = "vapt"
+    jwt_algorithm: str = "RS256"
+    jwt_audience: str = "vapt-platform"
+    keycloak_tls_ca_path: str = ""  # Path to CA cert for Keycloak TLS verification
 
     # ── Rate Limiting ──
     rate_limit_per_tenant_per_minute: int = 60

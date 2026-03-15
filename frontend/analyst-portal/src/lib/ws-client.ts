@@ -15,7 +15,9 @@ export class WebSocketManager {
   connect(token: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
-    this.ws = new WebSocket(`${this.url}?token=${token}`);
+    // Pass token via WebSocket subprotocol to avoid URL query parameter exposure
+    // (tokens in URLs leak via browser history, proxy logs, and server access logs)
+    this.ws = new WebSocket(this.url, [`access_token.${token}`]);
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;

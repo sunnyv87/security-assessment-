@@ -49,8 +49,8 @@ data:
             }
 
             seal "awskms" {
-              region     = "us-east-1"
-              kms_key_id = "REPLACE_WITH_KMS_KEY_ID"
+              region     = "${VAULT_AWSKMS_SEAL_REGION}"
+              kms_key_id = "${VAULT_AWSKMS_SEAL_KEY_ID}"
             }
 
             telemetry {

@@ -24,7 +24,7 @@ metadata:
   name: vapt-monitoring
   labels:
     app.kubernetes.io/part-of: vapt-orchestration
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
 ---
 apiVersion: v1

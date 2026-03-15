@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     keycloak_admin_client_id: str = "admin-cli"
     jwt_algorithm: str = "RS256"
     jwt_audience: str = "vapt-platform"
+    keycloak_tls_ca_path: str = ""  # Path to CA cert for Keycloak TLS verification
 
     # PostgreSQL
     db_host: str = "vapt-pgbouncer-rw.vapt-data.svc.cluster.local"
@@ -42,7 +43,7 @@ class Settings(BaseSettings):
     ip_allowlist_cache_ttl: int = 60  # 1 min
 
     # Kafka
-    kafka_bootstrap_servers: str = "vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9092"
+    kafka_bootstrap_servers: str = "vapt-kafka-kafka-bootstrap.vapt-data.svc.cluster.local:9093"
     kafka_audit_topic: str = "audit.events"
     kafka_consumer_group: str = "security-services"
 

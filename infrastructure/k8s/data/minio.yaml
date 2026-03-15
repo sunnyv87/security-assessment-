@@ -50,8 +50,8 @@ data:
             topologyKey: topology.kubernetes.io/zone
 
     environment:
-      MINIO_BROWSER: "on"
-      MINIO_PROMETHEUS_AUTH_TYPE: "public"
+      MINIO_BROWSER: "off"
+      MINIO_PROMETHEUS_AUTH_TYPE: "jwt"
 
     metrics:
       serviceMonitor:

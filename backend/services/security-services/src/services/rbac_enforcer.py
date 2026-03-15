@@ -240,8 +240,9 @@ class RBACEnforcer:
                 self._jwks_fetched_at = now
                 return self._jwks_cache
 
-        # Fetch from Keycloak
-        async with httpx.AsyncClient(verify=False) as client:
+        # Fetch from Keycloak — use CA cert for TLS verification
+        ssl_verify = settings.keycloak_tls_ca_path if settings.keycloak_tls_ca_path else True
+        async with httpx.AsyncClient(verify=ssl_verify) as client:
             resp = await client.get(settings.jwks_url, timeout=10)
             resp.raise_for_status()
             self._jwks_cache = resp.json()
