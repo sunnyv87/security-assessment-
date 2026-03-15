@@ -7,7 +7,7 @@ from jinja2 import Template
 
 from src.config.settings import settings
 from src.models.domain import Finding, FalsePositiveResult
-from src.prompts.templates import FP_DETECTION_SYSTEM, FP_DETECTION_USER
+from src.prompts.templates import FP_DETECTION_SYSTEM, FP_DETECTION_USER, sanitize_finding
 from src.services.llm_gateway import LLMGateway
 from src.services.context_builder import ContextBuilder
 
@@ -40,6 +40,9 @@ class FPDetectionPipeline:
             Tuple of (FalsePositiveResult, was_cached).
         """
         logger.info("fp_detection_start", finding_id=finding.id)
+
+        # Sanitize user-controlled fields before template rendering
+        sanitize_finding(finding)
 
         # Build context
         asset = await self._ctx.get_asset_context(finding.asset)

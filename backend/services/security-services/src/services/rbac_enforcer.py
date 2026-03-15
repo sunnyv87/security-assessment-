@@ -109,7 +109,16 @@ class RBACEnforcer:
                 role_perms = ROLE_PERMISSIONS.get(role, set())
                 all_permissions.update(role_perms)
             except ValueError:
-                logger.warning("unknown_role", role=role_name, user_id=claims.sub)
+                logger.error(
+                    "unknown_role_rejected",
+                    role=role_name,
+                    user_id=claims.sub,
+                    tenant_id=claims.tenant_id,
+                )
+                raise PermissionError(
+                    f"Unknown role '{role_name}' in JWT for user {claims.sub}. "
+                    f"Token contains invalid role claims and has been rejected."
+                )
 
         # Add explicit permissions from token (for fine-grained overrides)
         for perm_name in claims.permissions:

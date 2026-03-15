@@ -12,7 +12,7 @@ from src.models.domain import (
     ThreatIntelContext,
     RiskPriorityResult,
 )
-from src.prompts.templates import RISK_PRIORITY_SYSTEM, RISK_PRIORITY_USER
+from src.prompts.templates import RISK_PRIORITY_SYSTEM, RISK_PRIORITY_USER, sanitize_finding
 from src.services.llm_gateway import LLMGateway
 from src.services.context_builder import ContextBuilder
 
@@ -51,6 +51,10 @@ class RiskPriorityPipeline:
             engagement_id=engagement.id,
             finding_count=len(findings),
         )
+
+        # Sanitize user-controlled fields before template rendering
+        for f in findings:
+            sanitize_finding(f)
 
         if threat_intel is None:
             threat_intel = ThreatIntelContext()

@@ -7,7 +7,7 @@ from jinja2 import Template
 
 from src.config.settings import settings
 from src.models.domain import Finding, VulnSummaryResult
-from src.prompts.templates import VULN_SUMMARY_SYSTEM, VULN_SUMMARY_USER
+from src.prompts.templates import VULN_SUMMARY_SYSTEM, VULN_SUMMARY_USER, sanitize_finding
 from src.services.llm_gateway import LLMGateway
 from src.services.context_builder import ContextBuilder
 
@@ -36,6 +36,9 @@ class SummarizationPipeline:
             Tuple of (VulnSummaryResult, was_cached).
         """
         logger.info("summarization_start", finding_id=finding.id)
+
+        # Sanitize user-controlled fields before template rendering
+        sanitize_finding(finding)
 
         # Build context
         asset = await self._ctx.get_asset_context(finding.asset)

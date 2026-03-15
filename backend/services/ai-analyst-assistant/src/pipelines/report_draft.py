@@ -22,7 +22,7 @@ from src.models.domain import (
     ReportStatus,
     ReportType,
 )
-from src.prompts.templates import REPORT_DRAFT_SYSTEM, REPORT_DRAFT_USER
+from src.prompts.templates import REPORT_DRAFT_SYSTEM, REPORT_DRAFT_USER, sanitize_finding
 from src.services.llm_gateway import LLMGateway
 from src.services.context_builder import ContextBuilder
 
@@ -72,6 +72,10 @@ class ReportDraftPipeline:
             f for f in findings
             if f.validation_verdict is not None
         ]
+
+        # Sanitize user-controlled fields before template rendering
+        for f in validated:
+            sanitize_finding(f)
 
         if not validated:
             logger.warning("report_draft_no_validated_findings", engagement_id=engagement.id)

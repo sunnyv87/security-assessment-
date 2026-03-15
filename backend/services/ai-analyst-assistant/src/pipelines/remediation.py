@@ -7,7 +7,7 @@ from jinja2 import Template
 
 from src.config.settings import settings
 from src.models.domain import Finding, RemediationResult
-from src.prompts.templates import REMEDIATION_SYSTEM, REMEDIATION_USER
+from src.prompts.templates import REMEDIATION_SYSTEM, REMEDIATION_USER, sanitize_finding
 from src.services.llm_gateway import LLMGateway
 from src.services.context_builder import ContextBuilder
 
@@ -41,6 +41,9 @@ class RemediationPipeline:
             Tuple of (RemediationResult, was_cached).
         """
         logger.info("remediation_start", finding_id=finding.id)
+
+        # Sanitize user-controlled fields before template rendering
+        sanitize_finding(finding)
 
         # Build context
         asset = await self._ctx.get_asset_context(finding.asset)
