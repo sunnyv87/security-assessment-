@@ -43,7 +43,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ai-analyst-assistant
-          image: vapt-registry/ai-analyst-assistant:latest
+          image: vapt-registry/ai-analyst-assistant:1.0.0
           ports:
             - containerPort: 8090
               name: http
@@ -164,7 +164,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: reporting-service
-          image: vapt-registry/reporting-service:latest
+          image: vapt-registry/reporting-service:1.0.0
           ports:
             - containerPort: 8091
               name: http

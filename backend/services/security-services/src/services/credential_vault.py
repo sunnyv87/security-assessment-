@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from datetime import datetime
 
@@ -162,6 +163,7 @@ class CredentialVaultService:
             scan_job_id=request.scan_job_id,
             checked_out_by=actor_id,
             lease_ttl_seconds=ttl,
+            wrapped_token=json.dumps(wrap_response["data"]["data"]),
             source_ip=source_ip,
             pod_name=pod_name,
         )
@@ -187,6 +189,12 @@ class CredentialVaultService:
             credential_id=credential_id,
             tenant_id=tenant_id,
         )
+
+        # Revoke the Vault lease to immediately invalidate the credential
+        try:
+            self._vault().sys.revoke_lease(checkout_id)
+        except Exception:
+            logger.warning("vault_lease_revocation_failed", checkout_id=checkout_id)
 
     # ── Credential Rotation ──
 

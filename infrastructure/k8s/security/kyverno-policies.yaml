@@ -177,3 +177,32 @@ spec:
           spec:
             containers:
               - image: "!*:latest"
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-scan-job-images
+  annotations:
+    policies.kyverno.io/title: Restrict Scan Job Images
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-scan-job-image
+      match:
+        any:
+          - resources:
+              kinds:
+                - Job
+              namespaces:
+                - vapt-platform
+      validate:
+        message: "Scan jobs must use approved scanner images from vapt-registry"
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - image: "vapt-registry/scan-worker-*"

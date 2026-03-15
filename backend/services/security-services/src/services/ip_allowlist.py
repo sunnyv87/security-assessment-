@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import time as _time
 import uuid
+from collections import defaultdict
 from datetime import datetime
 from ipaddress import IPv4Address, IPv4Network, IPv6Address, IPv6Network, ip_address, ip_network
 
@@ -27,10 +29,16 @@ class IPAllowlistService:
     Tier 3: Scan Target — customer-approved target IP/CIDR ranges
     """
 
+    # Rate limit: max 10 add_entry calls per tenant per 60 seconds
+    _RATE_LIMIT_MAX_CALLS: int = 10
+    _RATE_LIMIT_WINDOW_SECONDS: float = 60.0
+
     def __init__(self) -> None:
         self._redis: aioredis.Redis | None = None
         # In-memory store for demo; production uses PostgreSQL + Redis cache
         self._entries: dict[str, IPAllowlistEntry] = {}
+        # Rate limiter: tenant_id → list of timestamps
+        self._add_timestamps: dict[str, list[float]] = defaultdict(list)
 
     async def init(self) -> None:
         self._redis = aioredis.from_url(settings.redis_url, decode_responses=True)
@@ -59,6 +67,24 @@ class IPAllowlistService:
         - Maximum entries per tenant
         - No duplicate CIDRs
         """
+        # Rate limit check
+        now = _time.monotonic()
+        cutoff = now - self._RATE_LIMIT_WINDOW_SECONDS
+        timestamps = self._add_timestamps[tenant_id]
+        # Prune old entries
+        self._add_timestamps[tenant_id] = [t for t in timestamps if t > cutoff]
+        if len(self._add_timestamps[tenant_id]) >= self._RATE_LIMIT_MAX_CALLS:
+            logger.warning(
+                "ip_allowlist_rate_limit_exceeded",
+                tenant_id=tenant_id,
+                count=len(self._add_timestamps[tenant_id]),
+            )
+            raise ValueError(
+                f"Rate limit exceeded: maximum {self._RATE_LIMIT_MAX_CALLS} "
+                f"entries per {int(self._RATE_LIMIT_WINDOW_SECONDS)} seconds"
+            )
+        self._add_timestamps[tenant_id].append(now)
+
         # Validate CIDR
         try:
             network = ip_network(cidr, strict=False)

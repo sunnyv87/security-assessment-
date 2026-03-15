@@ -43,7 +43,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engagement-svc
-          image: vapt-registry/engagement-svc:latest
+          image: vapt-registry/engagement-svc:1.0.0
           ports:
             - containerPort: 8080
               name: http
@@ -152,7 +152,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: asset-discovery-svc
-          image: vapt-registry/asset-discovery-svc:latest
+          image: vapt-registry/asset-discovery-svc:1.0.0
           ports:
             - containerPort: 8080
               name: http
@@ -245,7 +245,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: analyst-workflow-svc
-          image: vapt-registry/analyst-workflow-svc:latest
+          image: vapt-registry/analyst-workflow-svc:1.0.0
           ports:
             - containerPort: 8080
               name: http
@@ -342,7 +342,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: findings-normalization-svc
-          image: vapt-registry/findings-normalization-svc:latest
+          image: vapt-registry/findings-normalization-svc:1.0.0
           ports:
             - containerPort: 8080
               name: http
@@ -434,7 +434,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: compliance-engine-svc
-          image: vapt-registry/compliance-engine-svc:latest
+          image: vapt-registry/compliance-engine-svc:1.0.0
           ports:
             - containerPort: 8080
               name: http
@@ -513,7 +513,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: teams-bot-svc
-          image: vapt-registry/teams-bot-svc:latest
+          image: vapt-registry/teams-bot-svc:1.0.0
           ports:
             - containerPort: 8080
               name: http

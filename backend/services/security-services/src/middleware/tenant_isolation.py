@@ -23,7 +23,7 @@ class TenantIsolationMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Skip health checks
-        if request.url.path in ("/health", "/metrics"):
+        if request.url.path in ("/health",):
             return await call_next(request)
 
         # Extract tenant_id from JWT claims (set by RBAC middleware)
@@ -177,16 +177,6 @@ CREATE INDEX idx_audit_tenant ON audit_events(tenant_id, timestamp DESC);
 CREATE INDEX idx_scan_windows_tenant ON scan_windows(tenant_id, engagement_id);
 CREATE INDEX idx_ip_allowlists_tenant ON ip_allowlists(tenant_id, list_type, is_active);
 """
-
-
-def set_tenant_context_sql(tenant_id: str) -> str:
-    """Generate SQL to set the tenant context for RLS.
-
-    This must be executed at the START of every database transaction
-    before any tenant-scoped queries.
-    """
-    # Use parameterized approach to prevent SQL injection
-    return f"SET LOCAL app.current_tenant_id = '{tenant_id}';"
 
 
 class TenantAwareDatabaseSession:

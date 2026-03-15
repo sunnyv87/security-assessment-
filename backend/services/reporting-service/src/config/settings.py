@@ -1,5 +1,6 @@
 """Reporting service configuration."""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -39,6 +40,13 @@ class Settings(BaseSettings):
     # ── Service Mesh TLS ──
     service_mesh_ca_path: str = ""  # Path to service mesh CA cert for mTLS verification
 
+    # ── Keycloak OIDC ──
+    keycloak_url: str = "https://keycloak.vapt-security.svc.cluster.local:8443"
+    keycloak_realm: str = "vapt"
+    jwt_algorithm: str = "RS256"
+    jwt_audience: str = "vapt-platform"
+    keycloak_tls_ca_path: str = ""  # Path to CA cert for Keycloak TLS verification
+
     # ── Report Generation ──
     template_dir: str = "src/templates"
     max_concurrent_renders: int = 4
@@ -49,6 +57,22 @@ class Settings(BaseSettings):
     report_retention_days: int = 90
 
     model_config = {"env_prefix": "REPORT_", "env_file": ".env"}
+
+    @model_validator(mode="after")
+    def _validate_credentials(self) -> "Settings":
+        """Ensure MinIO credentials are provided in non-development environments."""
+        if self.environment != "development":
+            missing: list[str] = []
+            if not self.minio_access_key:
+                missing.append("minio_access_key")
+            if not self.minio_secret_key:
+                missing.append("minio_secret_key")
+            if missing:
+                raise ValueError(
+                    f"Missing required credentials for environment "
+                    f"'{self.environment}': {', '.join(missing)}"
+                )
+        return self
 
 
 settings = Settings()

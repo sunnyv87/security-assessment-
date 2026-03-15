@@ -33,10 +33,7 @@ async def lifespan(app: FastAPI):
     routes.audit = audit_logger
 
     credential_vault = CredentialVaultService()
-    try:
-        credential_vault.init()
-    except Exception:
-        logger.warning("vault_unavailable_running_without_credentials")
+    credential_vault.init()
     routes.credential_vault = credential_vault
 
     scan_window_enforcer = ScanWindowEnforcer()

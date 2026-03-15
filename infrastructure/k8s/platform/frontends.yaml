@@ -38,7 +38,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: analyst-portal
-          image: vapt-registry/analyst-portal:latest
+          image: vapt-registry/analyst-portal:1.0.0
           ports:
             - containerPort: 3000
               name: http
@@ -146,7 +146,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: customer-portal
-          image: vapt-registry/customer-portal:latest
+          image: vapt-registry/customer-portal:1.0.0
           ports:
             - containerPort: 3000
               name: http

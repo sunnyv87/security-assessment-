@@ -81,16 +81,58 @@ class StorageService:
         self,
         tenant_id: str,
         file_path: str,
+        engagement_id: str | None = None,
     ) -> str:
         """Generate a pre-signed download URL (time-limited).
 
         Used for customer portal downloads. URL expires after configured TTL.
+
+        Args:
+            tenant_id: The tenant requesting the URL.
+            file_path: Object path within the tenant bucket.
+            engagement_id: Optional engagement ID to verify the caller has
+                access to the requested file.
+
+        Raises:
+            ValueError: If file_path does not start with the expected prefix
+                or the engagement_id does not match.
         """
+        # Validate file_path starts with expected prefix
+        expected_prefix = "reports/"
+        if not file_path.startswith(expected_prefix):
+            logger.warning(
+                "presigned_url_invalid_path",
+                tenant_id=tenant_id,
+                file_path_prefix=file_path[:20],
+            )
+            raise ValueError(
+                f"Invalid file path: must start with '{expected_prefix}'"
+            )
+
+        # If engagement_id is provided, verify the file belongs to that engagement
+        if engagement_id and f"/{engagement_id}/" not in file_path:
+            logger.warning(
+                "presigned_url_ownership_mismatch",
+                tenant_id=tenant_id,
+                engagement_id=engagement_id,
+            )
+            raise ValueError(
+                "File does not belong to the specified engagement"
+            )
+
         bucket = self._bucket_name(tenant_id)
         ttl = timedelta(seconds=settings.presigned_url_ttl_seconds)
 
         url = self._client.presigned_get_object(bucket, file_path, expires=ttl)
-        logger.info("presigned_url_generated", bucket=bucket, path=file_path)
+
+        # Log a hash of the URL instead of the full presigned URL
+        url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+        logger.info(
+            "presigned_url_generated",
+            bucket=bucket,
+            path=file_path,
+            url_hash=url_hash,
+        )
         return url
 
     def delete_report(self, tenant_id: str, file_path: str) -> None:

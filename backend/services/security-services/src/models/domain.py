@@ -239,6 +239,7 @@ class CredentialCheckout(BaseModel):
     checked_out_at: datetime = Field(default_factory=datetime.utcnow)
     lease_ttl_seconds: int = 3600
     lease_id: str = ""
+    wrapped_token: str = ""
     checked_in_at: datetime | None = None
     source_ip: str = ""
     pod_name: str = ""

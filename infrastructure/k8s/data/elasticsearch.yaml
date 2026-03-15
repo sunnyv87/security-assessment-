@@ -179,7 +179,7 @@ data:
             }
           },
           "delete": {
-            "min_age": "365d",
+            "min_age": "2555d",
             "actions": {
               "delete": {}
             }

@@ -58,6 +58,16 @@ data:
               disable_hostname = true
             }
 
+      extraEnvironmentVars:
+        VAULT_AWSKMS_SEAL_KEY_ID:
+          secretKeyRef:
+            name: vault-seal-credentials
+            key: kms-key-id
+        VAULT_AWSKMS_SEAL_REGION:
+          secretKeyRef:
+            name: vault-seal-credentials
+            key: region
+
       resources:
         requests:
           cpu: 500m

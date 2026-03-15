@@ -1,0 +1,70 @@
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: strict-mtls
+  namespace: vapt-platform
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: security-services-access
+  namespace: vapt-platform
+spec:
+  selector:
+    matchLabels:
+      app: security-services
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/vapt-platform/sa/scan-orchestrator-sa
+              - cluster.local/ns/vapt-platform/sa/engagement-svc-sa
+              - cluster.local/ns/vapt-platform/sa/ai-analyst-sa
+              - cluster.local/ns/vapt-platform/sa/reporting-svc-sa
+              - cluster.local/ns/vapt-platform/sa/kong-sa
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: reporting-service-access
+  namespace: vapt-platform
+spec:
+  selector:
+    matchLabels:
+      app: reporting-service
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/vapt-platform/sa/kong-sa
+              - cluster.local/ns/vapt-platform/sa/engagement-svc-sa
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: ai-analyst-access
+  namespace: vapt-platform
+spec:
+  selector:
+    matchLabels:
+      app: ai-analyst-assistant
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/vapt-platform/sa/kong-sa
+              - cluster.local/ns/vapt-platform/sa/reporting-svc-sa
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-default
+  namespace: vapt-platform
+spec:
+  {}

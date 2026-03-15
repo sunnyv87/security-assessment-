@@ -42,6 +42,7 @@ class ScanWindowEnforcer:
     # In-memory store for demo; production uses PostgreSQL
     _windows: dict[str, ScanWindow] = {}
     _overrides: dict[str, datetime] = {}  # engagement_id → override_expires_at
+    _pending_overrides: dict[str, dict] = {}  # engagement_id → pending override info
 
     def create_window(
         self,
@@ -90,6 +91,7 @@ class ScanWindowEnforcer:
         self,
         engagement_id: str,
         check_time: datetime | None = None,
+        target_scope: list[str] | None = None,
     ) -> ScanWindowCheckResult:
         """Check if the current time is within the scan window.
 
@@ -112,6 +114,17 @@ class ScanWindowEnforcer:
         if not window:
             # No window defined → scanning allowed (unrestricted)
             return ScanWindowCheckResult(allowed=True, reason="No scan window defined")
+
+        # Validate target scope if provided
+        if target_scope is not None:
+            approved_scope = getattr(window, "approved_scope", None)
+            if approved_scope:
+                out_of_scope = [t for t in target_scope if t not in approved_scope]
+                if out_of_scope:
+                    return ScanWindowCheckResult(
+                        allowed=False,
+                        reason=f"Targets outside approved scope: {out_of_scope}",
+                    )
 
         if not window.is_active:
             return ScanWindowCheckResult(
@@ -200,8 +213,8 @@ class ScanWindowEnforcer:
     ) -> dict:
         """Request an emergency scan override (requires dual-approval).
 
-        In production, this would create a pending approval workflow.
-        For this implementation, we validate the approver count.
+        Creates a PENDING override that must be approved by all required
+        approvers before it becomes active.
         """
         from src.config.settings import settings
 
@@ -216,23 +229,120 @@ class ScanWindowEnforcer:
         if requestor_id in request.approver_ids:
             raise PermissionError("Requestor cannot approve their own override")
 
-        expires_at = datetime.utcnow() + timedelta(hours=request.duration_hours)
-        self._overrides[request.engagement_id] = expires_at
+        # Store as pending — not yet active
+        self._pending_overrides[request.engagement_id] = {
+            "engagement_id": request.engagement_id,
+            "tenant_id": tenant_id,
+            "requestor_id": requestor_id,
+            "justification": request.justification,
+            "duration_hours": request.duration_hours,
+            "required_approver_ids": list(request.approver_ids),
+            "approved_by": [],
+            "status": "pending_approval",
+            "requested_at": datetime.utcnow().isoformat(),
+        }
 
         logger.warning(
-            "emergency_scan_override_granted",
+            "emergency_scan_override_requested",
             engagement_id=request.engagement_id,
             requestor=requestor_id,
             approvers=request.approver_ids,
-            expires_at=expires_at.isoformat(),
             justification=request.justification,
+            status="pending_approval",
         )
 
         return {
             "engagement_id": request.engagement_id,
-            "override_granted": True,
-            "expires_at": expires_at.isoformat(),
+            "status": "pending_approval",
+            "required_approvers": list(request.approver_ids),
+            "approved_by": [],
             "duration_hours": request.duration_hours,
+        }
+
+    def approve_emergency_override(
+        self,
+        engagement_id: str,
+        approver_id: str,
+    ) -> dict:
+        """Approve a pending emergency override.
+
+        The override only becomes active once ALL required approvers
+        have approved.
+        """
+        pending = self._pending_overrides.get(engagement_id)
+        if not pending:
+            raise ValueError(
+                f"No pending override found for engagement {engagement_id}"
+            )
+
+        if pending["status"] != "pending_approval":
+            raise PermissionError(
+                f"Override for engagement {engagement_id} is not pending "
+                f"(status: {pending['status']})"
+            )
+
+        if approver_id not in pending["required_approver_ids"]:
+            raise PermissionError(
+                f"User {approver_id} is not in the list of required approvers"
+            )
+
+        if approver_id in pending["approved_by"]:
+            raise PermissionError(
+                f"User {approver_id} has already approved this override"
+            )
+
+        pending["approved_by"].append(approver_id)
+
+        # Check if all required approvers have approved
+        all_approved = all(
+            aid in pending["approved_by"]
+            for aid in pending["required_approver_ids"]
+        )
+
+        if all_approved:
+            # Activate the override
+            expires_at = datetime.utcnow() + timedelta(
+                hours=pending["duration_hours"]
+            )
+            self._overrides[engagement_id] = expires_at
+            pending["status"] = "active"
+
+            logger.warning(
+                "emergency_scan_override_activated",
+                engagement_id=engagement_id,
+                approvers=pending["approved_by"],
+                expires_at=expires_at.isoformat(),
+            )
+
+            # Clean up pending record
+            del self._pending_overrides[engagement_id]
+
+            return {
+                "engagement_id": engagement_id,
+                "status": "active",
+                "expires_at": expires_at.isoformat(),
+                "approved_by": pending["approved_by"],
+            }
+
+        logger.info(
+            "emergency_scan_override_partially_approved",
+            engagement_id=engagement_id,
+            approver=approver_id,
+            approved_by=pending["approved_by"],
+            remaining=[
+                aid for aid in pending["required_approver_ids"]
+                if aid not in pending["approved_by"]
+            ],
+        )
+
+        return {
+            "engagement_id": engagement_id,
+            "status": "pending_approval",
+            "approved_by": pending["approved_by"],
+            "remaining_approvers": [
+                aid for aid in pending["required_approver_ids"]
+                if aid not in pending["approved_by"]
+            ],
         }
 
     def _find_next_window(

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -35,7 +38,7 @@ class Settings(BaseSettings):
     vault_role: str = "security-services"
     vault_mount_transit: str = "transit"
     vault_mount_kv: str = "secret"
-    vault_credential_ttl: int = 3600  # 1 hour default lease
+    vault_credential_ttl: int = 900  # 15 minute default lease
 
     # Redis
     redis_url: str = "redis://redis-master.vapt-data.svc.cluster.local:6379/3"
@@ -73,6 +76,47 @@ class Settings(BaseSettings):
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
             f"?ssl={self.db_ssl_mode}"
         )
+
+    environment: str = "development"
+
+    @model_validator(mode="after")
+    def _validate_production_credentials(self) -> "Settings":
+        """Ensure critical credentials are set in non-development environments."""
+        if self.environment != "development":
+            missing = []
+            if not self.db_password:
+                missing.append("db_password")
+            if not self.vault_addr:
+                missing.append("vault_addr")
+            if not self.vault_role:
+                missing.append("vault_role")
+            if missing:
+                raise ValueError(
+                    f"Required settings missing for environment "
+                    f"'{self.environment}': {', '.join(missing)}"
+                )
+        return self
+
+    @property
+    def database_url_masked(self) -> str:
+        """Return database URL with password masked (safe for logging)."""
+        url = self.database_url
+        if self.db_password:
+            url = url.replace(self.db_password, "***")
+        return url
+
+    def __repr__(self) -> str:
+        """Mask sensitive fields in repr output."""
+        safe_fields = {}
+        sensitive_keys = {"db_password", "vault_addr", "vault_role", "redis_url"}
+        for key in self.model_fields:
+            value = getattr(self, key)
+            if key in sensitive_keys and value:
+                safe_fields[key] = "***"
+            else:
+                safe_fields[key] = value
+        fields_str = ", ".join(f"{k}={v!r}" for k, v in safe_fields.items())
+        return f"Settings({fields_str})"
 
     model_config = {"env_prefix": "SECURITY_"}
 
