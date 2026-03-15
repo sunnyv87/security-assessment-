@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from src.api import routes
 from src.config.settings import settings
+from src.middleware.csrf import CSRFMiddleware
 from src.pipeline.generator import ReportGenerator
 from src.services.kafka_consumer import ReportTriggerConsumer
 
@@ -56,6 +57,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(CSRFMiddleware)
 app.include_router(routes.router)
 
 

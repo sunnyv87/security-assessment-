@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from src.config.settings import settings
 from src.api.routes import router
 from src.api.dependencies import set_orchestrator
+from src.middleware.csrf import CSRFMiddleware
 from src.middleware.rate_limiter import RateLimitMiddleware
 from src.pipelines.orchestrator import PipelineOrchestrator
 from src.services.kafka_consumer import FindingEnrichmentConsumer
@@ -68,6 +69,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(CSRFMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.include_router(router)
 

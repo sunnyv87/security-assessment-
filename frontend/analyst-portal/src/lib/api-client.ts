@@ -17,6 +17,8 @@ const api = ky.create({
         if (token) {
           request.headers.set('Authorization', `Bearer ${token}`);
         }
+        // CSRF protection: custom header prevents cross-origin form submissions
+        request.headers.set('X-Requested-With', 'XMLHttpRequest');
       },
     ],
   },

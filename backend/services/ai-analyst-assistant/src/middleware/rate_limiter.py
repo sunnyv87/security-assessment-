@@ -1,43 +1,38 @@
-"""Rate limiting middleware — enforces per-tenant and per-analyst request budgets."""
+"""Rate limiting middleware — enforces per-tenant and per-analyst request budgets via Redis."""
 
 from __future__ import annotations
-
-import time
-from collections import defaultdict
-from typing import Any
 
 import structlog
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 
+import redis.asyncio as redis
+
 from src.config.settings import settings
 
 logger = structlog.get_logger()
 
-
-class _SlidingWindowCounter:
-    """Simple in-process sliding window rate limiter.
-
-    For production at scale, replace with Redis-backed implementation
-    (e.g., redis INCR + EXPIRE or sliding window log in Redis).
-    """
-
-    def __init__(self) -> None:
-        self._windows: dict[str, list[float]] = defaultdict(list)
-
-    def is_allowed(self, key: str, limit: int, window_seconds: int = 60) -> bool:
-        now = time.monotonic()
-        cutoff = now - window_seconds
-        timestamps = self._windows[key]
-        # Prune expired entries
-        self._windows[key] = [t for t in timestamps if t > cutoff]
-        if len(self._windows[key]) >= limit:
-            return False
-        self._windows[key].append(now)
-        return True
+# Redis-backed sliding window rate limiter.
+# Uses INCR + EXPIRE for atomic, distributed counters shared across all replicas.
+_redis: redis.Redis | None = None
 
 
-_counter = _SlidingWindowCounter()
+async def _get_redis() -> redis.Redis:
+    global _redis
+    if _redis is None:
+        _redis = redis.from_url(settings.redis_url, decode_responses=True)
+    return _redis
+
+
+async def _is_allowed(key: str, limit: int, window_seconds: int = 60) -> bool:
+    """Check and increment a sliding window counter in Redis."""
+    r = await _get_redis()
+    pipe = r.pipeline()
+    pipe.incr(key)
+    pipe.expire(key, window_seconds, nx=True)
+    results = await pipe.execute()
+    current_count = results[0]
+    return current_count <= limit
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -48,14 +43,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path in ("/v1/health", "/health", "/metrics"):
             return await call_next(request)
 
-        # Extract identity from request state (set by auth dependency)
-        # For middleware-level enforcement, parse the JWT tenant_id claim
+        # Extract identity from request headers (set by auth/gateway)
         tenant_id = request.headers.get("X-Tenant-ID", "unknown")
         analyst_id = request.headers.get("X-User-ID", "unknown")
 
         # Per-tenant rate limit
-        tenant_key = f"tenant:{tenant_id}"
-        if not _counter.is_allowed(tenant_key, settings.rate_limit_per_tenant_per_minute):
+        tenant_key = f"ratelimit:tenant:{tenant_id}"
+        if not await _is_allowed(tenant_key, settings.rate_limit_per_tenant_per_minute):
             logger.warning(
                 "rate_limit_exceeded",
                 tenant_id=tenant_id,
@@ -68,8 +62,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         # Per-analyst rate limit
-        analyst_key = f"analyst:{analyst_id}"
-        if not _counter.is_allowed(analyst_key, settings.rate_limit_per_analyst_per_minute):
+        analyst_key = f"ratelimit:analyst:{analyst_id}"
+        if not await _is_allowed(analyst_key, settings.rate_limit_per_analyst_per_minute):
             logger.warning(
                 "rate_limit_exceeded",
                 analyst_id=analyst_id,

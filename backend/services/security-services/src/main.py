@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from src.api import routes
 from src.config.settings import settings
+from src.middleware.csrf import CSRFMiddleware
 from src.services.audit_logger import AuditLogger
 from src.services.credential_vault import CredentialVaultService
 from src.services.ip_allowlist import IPAllowlistService
@@ -63,6 +64,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(CSRFMiddleware)
 app.include_router(routes.router)
 
 
