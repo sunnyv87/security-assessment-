@@ -1,5 +1,6 @@
 """Application configuration loaded from environment variables."""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -60,8 +61,23 @@ class Settings(BaseSettings):
     # ── Token Budget ──
     max_input_tokens: int = 100000
     max_evidence_chars: int = 4000
+    max_tokens_per_tenant_per_day: int = 5_000_000
 
     model_config = {"env_prefix": "AI_ASSISTANT_", "env_file": ".env"}
+
+    @model_validator(mode="after")
+    def _validate_credentials(self) -> "Settings":
+        """Ensure critical credentials are set in non-development environments."""
+        if self.environment != "development":
+            if not self.anthropic_api_key:
+                raise ValueError(
+                    "anthropic_api_key must be set in non-development environments"
+                )
+            if not self.redis_url:
+                raise ValueError(
+                    "redis_url must be set in non-development environments"
+                )
+        return self
 
 
 settings = Settings()
